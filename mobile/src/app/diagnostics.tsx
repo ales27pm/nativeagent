@@ -5,107 +5,17 @@ import { ErrorPanel } from '@/components/ErrorPanel';
 import { useRuntimeSnapshot } from '@/features/runtime/useRuntimeSnapshot';
 import { colors } from '@/theme/colors';
 import { radii, spacing } from '@/theme/spacing';
-import { fontFamilies, fontSizes, fontWeights } from '@/theme/typography';
+import { fonts, sizes, tracking } from '@/theme/typography';
 
 type DetectableArch = 'new' | 'unknown';
 
 function detectNewArchitecture(): DetectableArch {
-  const globalAny = global as unknown as {
+  const g = global as unknown as {
     __turboModuleProxy?: unknown;
     nativeFabricUIManager?: unknown;
   };
-  if (globalAny.__turboModuleProxy != null || globalAny.nativeFabricUIManager != null) {
-    return 'new';
-  }
+  if (g.__turboModuleProxy != null || g.nativeFabricUIManager != null) return 'new';
   return 'unknown';
-}
-
-export default function DiagnosticsScreen(): React.JSX.Element {
-  const { status, snapshot, error, nativeAvailable, refresh } = useRuntimeSnapshot();
-  const arch = detectNewArchitecture();
-  const executionEnv = Constants.executionEnvironment;
-  const appOwnership = Constants.appOwnership ?? 'standalone';
-
-  return (
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-    >
-      <Section title="bridge">
-        <Row label="nativeModuleAvailable" value={String(nativeAvailable)} />
-        <Row label="status" value={status} />
-      </Section>
-
-      <Section title="environment">
-        <Row label="platform" value={Platform.OS} />
-        <Row label="platformVersion" value={String(Platform.Version)} />
-        <Row label="executionEnvironment" value={executionEnv} />
-        <Row label="appOwnership" value={appOwnership} />
-        <Row label="hermes" value={String(isHermes())} />
-        <Row label="newArchitecture" value={arch} />
-      </Section>
-
-      <Section title="runtime.snapshot">
-        {snapshot ? (
-          <>
-            <Row label="platform" value={snapshot.platform} />
-            <Row label="osVersion" value={snapshot.osVersion} />
-            <Row label="deviceModel" value={snapshot.deviceModel} />
-            <Row
-              label="processorCount"
-              value={String(snapshot.processorCount)}
-            />
-            <Row
-              label="activeProcessorCount"
-              value={String(snapshot.activeProcessorCount)}
-            />
-            <Row
-              label="physicalMemoryBytes"
-              value={formatBytes(snapshot.physicalMemoryBytes)}
-            />
-            <Row
-              label="lowPowerModeEnabled"
-              value={String(snapshot.lowPowerModeEnabled)}
-            />
-            <Row label="thermalState" value={snapshot.thermalState} />
-            <Row label="appVersion" value={snapshot.appVersion ?? 'null'} />
-            <Row label="buildNumber" value={snapshot.buildNumber ?? 'null'} />
-          </>
-        ) : (
-          <Text style={styles.muted}>No snapshot available.</Text>
-        )}
-      </Section>
-
-      {error ? <ErrorPanel error={error} onRetry={refresh} /> : null}
-    </ScrollView>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }): React.JSX.Element {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue} numberOfLines={1} ellipsizeMode="middle">
-        {value}
-      </Text>
-    </View>
-  );
 }
 
 function isHermes(): boolean {
@@ -113,38 +23,139 @@ function isHermes(): boolean {
 }
 
 function formatBytes(bytes: number): string {
-  if (!Number.isFinite(bytes) || bytes <= 0) return `${bytes}`;
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  if (!Number.isFinite(bytes) || bytes <= 0) return String(bytes);
+  const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.min(units.length - 1, Math.floor(Math.log10(bytes) / 3));
-  const scaled = bytes / Math.pow(1000, i);
-  return `${scaled.toFixed(2)} ${units[i]} (${bytes})`;
+  return `${(bytes / Math.pow(1000, i)).toFixed(2)} ${units[i]}`;
+}
+
+export default function DiagnosticsScreen(): React.JSX.Element {
+  const { status, snapshot, error, nativeAvailable, refresh } = useRuntimeSnapshot();
+  const arch = detectNewArchitecture();
+  const hermesOn = isHermes();
+
+  return (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      testID="diagnostics-screen"
+    >
+      <Block label="BRIDGE">
+        <DataRow
+          label="nativeModuleAvailable"
+          value={String(nativeAvailable)}
+          highlight={nativeAvailable}
+        />
+        <DataRow label="status" value={status} last />
+      </Block>
+
+      <Block label="ENVIRONMENT">
+        <DataRow label="platform" value={Platform.OS} />
+        <DataRow label="platformVersion" value={String(Platform.Version)} />
+        <DataRow label="executionEnvironment" value={Constants.executionEnvironment} />
+        <DataRow label="appOwnership" value={Constants.appOwnership ?? 'standalone'} />
+        <DataRow label="hermes" value={String(hermesOn)} highlight={hermesOn} />
+        <DataRow label="newArchitecture" value={arch} highlight={arch === 'new'} last />
+      </Block>
+
+      <Block label="RUNTIME.SNAPSHOT">
+        {snapshot !== null ? (
+          <>
+            <DataRow label="platform" value={snapshot.platform} />
+            <DataRow label="osVersion" value={snapshot.osVersion} />
+            <DataRow label="deviceModel" value={snapshot.deviceModel} />
+            <DataRow label="processorCount" value={String(snapshot.processorCount)} />
+            <DataRow
+              label="activeProcessorCount"
+              value={String(snapshot.activeProcessorCount)}
+            />
+            <DataRow
+              label="physicalMemory"
+              value={formatBytes(snapshot.physicalMemoryBytes)}
+            />
+            <DataRow
+              label="lowPowerMode"
+              value={String(snapshot.lowPowerModeEnabled)}
+            />
+            <DataRow label="thermalState" value={snapshot.thermalState} />
+            <DataRow label="appVersion" value={snapshot.appVersion ?? 'null'} />
+            <DataRow label="buildNumber" value={snapshot.buildNumber ?? 'null'} last />
+          </>
+        ) : (
+          <Text style={styles.empty}>no snapshot available</Text>
+        )}
+      </Block>
+
+      {error !== null ? <ErrorPanel error={error} onRetry={refresh} /> : null}
+    </ScrollView>
+  );
+}
+
+function Block({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <View style={styles.block}>
+      <Text style={styles.blockLabel}>{label}</Text>
+      <View style={styles.blockBody}>{children}</View>
+    </View>
+  );
+}
+
+function DataRow({
+  label,
+  value,
+  highlight = false,
+  last = false,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  last?: boolean;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.row, last ? styles.rowLast : null]}>
+      <Text style={styles.rowLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <View style={styles.rowRight}>
+        <Text style={styles.rowArrow}>{'▸'}</Text>
+        <Text
+          style={[styles.rowValue, highlight ? styles.rowValueHL : null]}
+          numberOfLines={1}
+          ellipsizeMode="middle"
+        >
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  scroll: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
+  scroll: { flex: 1, backgroundColor: colors.bg },
   content: {
     padding: spacing.xl,
-    gap: spacing['2xl'],
     paddingBottom: spacing['4xl'],
+    gap: spacing['2xl'],
   },
-  section: {
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.xs,
+  block: { gap: spacing.sm },
+  blockLabel: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
     color: colors.textMuted,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
+    letterSpacing: tracking.widest,
   },
-  sectionBody: {
+  blockBody: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     overflow: 'hidden',
   },
   row: {
@@ -155,25 +166,37 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: spacing.lg,
+    gap: spacing.xl,
   },
+  rowLast: { borderBottomWidth: 0 },
   rowLabel: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
-    color: colors.textSecondary,
-    flexShrink: 0,
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.textMuted,
+    flexShrink: 1,
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flexShrink: 1,
+  },
+  rowArrow: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.amberDim,
   },
   rowValue: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
-    color: colors.textPrimary,
-    flexShrink: 1,
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.textSub,
     textAlign: 'right',
-    fontWeight: fontWeights.medium,
+    flexShrink: 1,
   },
-  muted: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
+  rowValueHL: { color: colors.success },
+  empty: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
     color: colors.textMuted,
     padding: spacing.lg,
   },

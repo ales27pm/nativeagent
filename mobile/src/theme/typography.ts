@@ -1,35 +1,35 @@
 import { Platform } from 'react-native';
 
-export const fontFamilies = {
-  sans: Platform.select({
-    ios: 'System',
-    android: 'sans-serif',
-    default: 'System',
-  }),
-  mono: Platform.select({
+export const fonts = {
+  display: 'VT323',
+  mono: 'ShareTechMono',
+  monoFallback: Platform.select({
     ios: 'Menlo',
     android: 'monospace',
-    default: 'Menlo',
+    default: 'monospace',
   }),
 } as const;
 
-export const fontSizes = {
-  xs: 11,
+export const sizes = {
+  xs: 10,
   sm: 12,
-  base: 14,
+  base: 13,
   md: 15,
-  lg: 17,
-  xl: 20,
-  '2xl': 24,
-  '3xl': 32,
+  lg: 18,
+  xl: 22,
+  '2xl': 28,
+  '3xl': 40,
+  hero: 68,
 } as const;
 
-export const fontWeights = {
-  regular: '400',
-  medium: '500',
-  semibold: '600',
-  bold: '700',
+export const tracking = {
+  tight: -0.3,
+  normal: 0,
+  wide: 1,
+  wider: 2,
+  widest: 4,
+  hero: 6,
 } as const;
 
-export type FontSizeToken = keyof typeof fontSizes;
-export type FontWeightToken = keyof typeof fontWeights;
+export type FontToken = keyof typeof fonts;
+export type SizeToken = keyof typeof sizes;

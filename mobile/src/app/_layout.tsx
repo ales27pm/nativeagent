@@ -1,46 +1,60 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { ShareTechMono_400Regular } from '@expo-google-fonts/share-tech-mono';
+import { VT323_400Regular } from '@expo-google-fonts/vt323';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useColorScheme } from '@/lib/useColorScheme';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
 
-export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
-};
+import { colors } from '@/theme/colors';
+import { fonts, sizes, tracking } from '@/theme/typography';
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
-const queryClient = new QueryClient();
+export const unstable_settings = { initialRouteName: 'index' };
 
-function RootLayoutNav({ colorScheme }: { colorScheme: 'light' | 'dark' | null | undefined }) {
+function RootLayoutNav(): React.JSX.Element {
+  const onLayout = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    <View style={{ flex: 1, backgroundColor: colors.bg }} onLayout={onLayout}>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.amber,
+          headerTitleStyle: {
+            color: colors.amber,
+            fontFamily: fonts.mono,
+            fontSize: sizes.sm,
+          },
+          headerShadowVisible: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'fade',
+        }}
+      >
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="diagnostics" options={{ title: 'DIAGNOSTICS' }} />
       </Stack>
-    </ThemeProvider>
+    </View>
   );
 }
 
+export default function RootLayout(): React.JSX.Element | null {
+  const [fontsLoaded] = useFonts({
+    VT323: VT323_400Regular,
+    ShareTechMono: ShareTechMono_400Regular,
+  });
 
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  if (!fontsLoaded) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <KeyboardProvider>
-          <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-          <RootLayoutNav colorScheme={colorScheme} />
-        </KeyboardProvider>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar style="light" />
+      <RootLayoutNav />
+    </GestureHandlerRootView>
   );
 }

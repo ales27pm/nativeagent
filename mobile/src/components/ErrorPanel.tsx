@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { RuntimeError } from '@/features/runtime/runtimeTypes';
 import { colors } from '@/theme/colors';
 import { radii, spacing } from '@/theme/spacing';
-import { fontFamilies, fontSizes, fontWeights } from '@/theme/typography';
+import { fonts, sizes, tracking } from '@/theme/typography';
 
 type ErrorPanelProps = {
   error: RuntimeError;
@@ -13,19 +13,22 @@ type ErrorPanelProps = {
 export function ErrorPanel({ error, onRetry }: ErrorPanelProps): React.JSX.Element {
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.tag}>NATIVE BRIDGE</Text>
-        <Text style={styles.name}>{error.name}</Text>
+      <View style={styles.tagRow}>
+        <View style={styles.tag}>
+          <Text style={styles.tagText}>BRIDGE.ERROR</Text>
+        </View>
       </View>
+      <Text style={styles.name}>{error.name}</Text>
       <Text style={styles.message} selectable>
         {error.message}
       </Text>
-      {onRetry ? (
+      {onRetry !== undefined ? (
         <Pressable
           onPress={onRetry}
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
           accessibilityRole="button"
           accessibilityLabel="Retry native runtime"
+          testID="error-retry-button"
         >
           <Text style={styles.buttonText}>retry()</Text>
         </Pressable>
@@ -36,53 +39,54 @@ export function ErrorPanel({ error, onRetry }: ErrorPanelProps): React.JSX.Eleme
 
 const styles = StyleSheet.create({
   container: {
-    borderColor: colors.borderStrong,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.warning,
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.amber,
+    borderRadius: radii.sm,
     padding: spacing.lg,
     gap: spacing.md,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
+  tagRow: { flexDirection: 'row' },
   tag: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.xs,
-    color: colors.warning,
-    letterSpacing: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    backgroundColor: colors.amberFaint,
+    borderRadius: 2,
+  },
+  tagText: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.amber,
+    letterSpacing: tracking.widest,
   },
   name: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
-    color: colors.textSecondary,
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.textSub,
+    letterSpacing: tracking.wide,
   },
   message: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
-    color: colors.textPrimary,
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.text,
     lineHeight: 20,
   },
   button: {
     alignSelf: 'flex-start',
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.lg,
     borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.borderGlow,
+    backgroundColor: colors.surfaceUp,
   },
-  buttonPressed: {
-    backgroundColor: colors.border,
-  },
+  buttonPressed: { backgroundColor: colors.border },
   buttonText: {
-    fontFamily: fontFamilies.mono,
-    fontSize: fontSizes.sm,
-    color: colors.accent,
-    fontWeight: fontWeights.semibold,
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.amber,
+    letterSpacing: tracking.wide,
   },
 });
