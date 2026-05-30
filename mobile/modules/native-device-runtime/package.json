@@ -1,0 +1,9 @@
+{
+  "name": "native-device-runtime",
+  "version": "0.1.0",
+  "description": "Real native device/runtime metadata bridge for NativeAgent. iOS in Swift, Android in Kotlin, built on the Expo Modules API.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "keywords": ["expo-module", "native", "runtime", "device"]
+}

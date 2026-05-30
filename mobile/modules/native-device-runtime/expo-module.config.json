@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["NativeDeviceRuntimeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.nativedeviceruntime.NativeDeviceRuntimeModule"]
+  }
+}
