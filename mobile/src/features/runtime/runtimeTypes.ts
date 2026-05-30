@@ -2,7 +2,7 @@ export type {
   NativePlatform,
   NativeRuntimeSnapshot,
   ThermalState,
-} from '../../../modules/native-device-runtime/src/NativeDeviceRuntime.types';
+} from 'native-device-runtime';
 
 export type RuntimeStatus = 'idle' | 'loading' | 'success' | 'error';
 

@@ -112,6 +112,7 @@
     "lottie-react-native": "7.3.4",
     "lucide-react-native": "0.544.0",
     "moment": "2.30.1",
+    "native-device-runtime": "file:./modules/native-device-runtime",
     "nativewind": "4.2.1",
     "openai": "4.104.0",
     "patch-package": "8.0.1",

@@ -1,7 +1,8 @@
-import Constants from 'expo-constants';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ErrorPanel } from '@/components/ErrorPanel';
+import { getBridgeHealth } from '@/lib/bridgeHealth';
+import { validateSnapshot } from '@/features/runtime/snapshotValidator';
 import { useRuntimeSnapshot } from '@/features/runtime/useRuntimeSnapshot';
 import { colors } from '@/theme/colors';
 import { radii, spacing } from '@/theme/spacing';
@@ -18,10 +19,6 @@ function detectNewArchitecture(): DetectableArch {
   return 'unknown';
 }
 
-function isHermes(): boolean {
-  return typeof (globalThis as { HermesInternal?: unknown }).HermesInternal !== 'undefined';
-}
-
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return String(bytes);
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -30,9 +27,10 @@ function formatBytes(bytes: number): string {
 }
 
 export default function DiagnosticsScreen(): React.JSX.Element {
-  const { status, snapshot, error, nativeAvailable, refresh } = useRuntimeSnapshot();
+  const { snapshot, error, refresh } = useRuntimeSnapshot();
+  const health = getBridgeHealth();
   const arch = detectNewArchitecture();
-  const hermesOn = isHermes();
+  const validation = snapshot !== null ? validateSnapshot(snapshot) : null;
 
   return (
     <ScrollView
@@ -41,24 +39,66 @@ export default function DiagnosticsScreen(): React.JSX.Element {
       showsVerticalScrollIndicator={false}
       testID="diagnostics-screen"
     >
-      <Block label="BRIDGE">
+      {/* Bridge Health */}
+      <Block label="BRIDGE HEALTH">
         <DataRow
-          label="nativeModuleAvailable"
-          value={String(nativeAvailable)}
-          highlight={nativeAvailable}
+          label="bridgeAvailable"
+          value={String(health.bridgeAvailable)}
+          highlight={health.bridgeAvailable}
         />
-        <DataRow label="status" value={status} last />
+        <DataRow
+          label="nativeSnapshotAvailable"
+          value={String(health.nativeSnapshotAvailable)}
+          highlight={health.nativeSnapshotAvailable}
+        />
+        <DataRow
+          label="runningInDevBuild"
+          value={String(health.runningInDevBuild)}
+          highlight={health.runningInDevBuild}
+        />
+        <DataRow
+          label="runningInExpoGoLike"
+          value={String(health.runningInExpoGoLikeHost)}
+          danger={health.runningInExpoGoLikeHost}
+        />
+        <DataRow
+          label="hermesEnabled"
+          value={String(health.hermesEnabled)}
+          highlight={health.hermesEnabled}
+        />
+        <DataRow
+          label="newArchLikely"
+          value={arch}
+          highlight={arch === 'new'}
+          last
+        />
       </Block>
 
+      {/* Next action when bridge is offline */}
+      {health.nextAction !== null ? (
+        <Block label="NEXT STEP TO ACTIVATE BRIDGE">
+          {health.failureReason !== null ? (
+            <View style={styles.reasonRow}>
+              <Text style={styles.reasonText}>{health.failureReason}</Text>
+            </View>
+          ) : null}
+          <CommandBlock text={health.nextAction} />
+        </Block>
+      ) : null}
+
+      {/* Environment */}
       <Block label="ENVIRONMENT">
         <DataRow label="platform" value={Platform.OS} />
         <DataRow label="platformVersion" value={String(Platform.Version)} />
-        <DataRow label="executionEnvironment" value={Constants.executionEnvironment} />
-        <DataRow label="appOwnership" value={Constants.appOwnership ?? 'standalone'} />
-        <DataRow label="hermes" value={String(hermesOn)} highlight={hermesOn} />
+        <DataRow
+          label="executionEnvironment"
+          value={health.runningInDevBuild ? 'bare (dev build)' : 'hosted / storeClient'}
+        />
+        <DataRow label="hermes" value={String(health.hermesEnabled)} highlight={health.hermesEnabled} />
         <DataRow label="newArchitecture" value={arch} highlight={arch === 'new'} last />
       </Block>
 
+      {/* Runtime snapshot */}
       <Block label="RUNTIME.SNAPSHOT">
         {snapshot !== null ? (
           <>
@@ -77,13 +117,41 @@ export default function DiagnosticsScreen(): React.JSX.Element {
             <DataRow
               label="lowPowerMode"
               value={String(snapshot.lowPowerModeEnabled)}
+              danger={snapshot.lowPowerModeEnabled}
             />
             <DataRow label="thermalState" value={snapshot.thermalState} />
             <DataRow label="appVersion" value={snapshot.appVersion ?? 'null'} />
             <DataRow label="buildNumber" value={snapshot.buildNumber ?? 'null'} last />
           </>
         ) : (
-          <Text style={styles.empty}>no snapshot available</Text>
+          <Text style={styles.empty}>no snapshot — native bridge offline</Text>
+        )}
+      </Block>
+
+      {/* Shape validation */}
+      <Block label="SHAPE VALIDATION">
+        {validation !== null ? (
+          <>
+            <DataRow
+              label="valid"
+              value={String(validation.valid)}
+              highlight={validation.valid}
+            />
+            {!validation.valid ? (
+              validation.errors.map((e, i) => (
+                <DataRow key={i} label={`error[${i}]`} value={e} danger last={i === validation.errors.length - 1} />
+              ))
+            ) : (
+              <DataRow
+                label="errors"
+                value="none — all fields match contract"
+                highlight
+                last
+              />
+            )}
+          </>
+        ) : (
+          <Text style={styles.empty}>no snapshot to validate</Text>
         )}
       </Block>
 
@@ -111,13 +179,21 @@ function DataRow({
   label,
   value,
   highlight = false,
+  danger = false,
   last = false,
 }: {
   label: string;
   value: string;
   highlight?: boolean;
+  danger?: boolean;
   last?: boolean;
 }): React.JSX.Element {
+  const valueColor = highlight
+    ? colors.success
+    : danger
+      ? colors.danger
+      : colors.textSub;
+
   return (
     <View style={[styles.row, last ? styles.rowLast : null]}>
       <Text style={styles.rowLabel} numberOfLines={1}>
@@ -126,13 +202,25 @@ function DataRow({
       <View style={styles.rowRight}>
         <Text style={styles.rowArrow}>{'▸'}</Text>
         <Text
-          style={[styles.rowValue, highlight ? styles.rowValueHL : null]}
-          numberOfLines={1}
-          ellipsizeMode="middle"
+          style={[styles.rowValue, { color: valueColor }]}
+          numberOfLines={2}
+          ellipsizeMode="tail"
         >
           {value}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function CommandBlock({ text }: { text: string }): React.JSX.Element {
+  return (
+    <View style={styles.commandBlock}>
+      {text.split('\n').map((line, i) => (
+        <Text key={i} style={styles.commandLine} selectable>
+          {line}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -160,7 +248,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -173,11 +261,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: sizes.sm,
     color: colors.textMuted,
-    flexShrink: 1,
+    flexShrink: 0,
+    paddingTop: 1,
   },
   rowRight: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.xs,
     flexShrink: 1,
   },
@@ -185,15 +274,39 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: sizes.xs,
     color: colors.amberDim,
+    paddingTop: 2,
   },
   rowValue: {
     fontFamily: fonts.mono,
     fontSize: sizes.sm,
-    color: colors.textSub,
     textAlign: 'right',
     flexShrink: 1,
+    lineHeight: 18,
   },
-  rowValueHL: { color: colors.success },
+  reasonRow: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  reasonText: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.textSub,
+    lineHeight: 18,
+  },
+  commandBlock: {
+    backgroundColor: colors.surfaceUp,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: 2,
+  },
+  commandLine: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.amberBright,
+    lineHeight: 20,
+  },
   empty: {
     fontFamily: fonts.mono,
     fontSize: sizes.sm,

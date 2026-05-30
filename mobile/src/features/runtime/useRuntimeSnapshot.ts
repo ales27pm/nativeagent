@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   getRuntimeSnapshot,
   isNativeRuntimeAvailable,
-} from '../../../modules/native-device-runtime/src';
+} from 'native-device-runtime';
 
+import { assertValidSnapshot } from './snapshotValidator';
 import type {
   NativeRuntimeSnapshot,
   RuntimeError,
@@ -35,22 +36,27 @@ export function useRuntimeSnapshot(): UseRuntimeSnapshotResult {
       setError({
         name: 'NativeDeviceRuntimeUnavailableError',
         message:
-          'Native module not linked. Create a development build with `npx expo prebuild --clean` then `npx expo run:ios` or `npx expo run:android`.',
+          'Native module not linked. Create a development build:\n' +
+          '  npx expo prebuild --clean\n' +
+          '  npx expo run:ios\n' +
+          '  # or: npx expo run:android',
       });
       return;
     }
 
     setStatus('loading');
     setError(null);
+
     try {
-      const result = await getRuntimeSnapshot();
-      setSnapshot(result);
+      const raw = await getRuntimeSnapshot();
+      const validated = assertValidSnapshot(raw);
+      setSnapshot(validated);
       setStatus('success');
     } catch (err) {
       const e = err as { name?: string; message?: string };
       setError({
         name: e.name ?? 'Error',
-        message: e.message ?? 'Unknown error',
+        message: e.message ?? 'Unknown error from native runtime',
       });
       setStatus('error');
     }
