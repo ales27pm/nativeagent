@@ -101,17 +101,16 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 2. **`LlamaCppCApiAdapter`** hardened — `tokenize` and `tokenToPiece` use `withUnsafeMutableBufferPointer`; both throw typed `LlamaCppError` instead of silently returning error codes
 3. **New `LlamaCppError` cases** — `vocabUnavailable`, `emptyVocabulary`, `detokenizationFailed`, `invalidLogits`, `inferenceBusy`
 4. **`LlamaCppModelSession`** hardened — vocab size and EOS token validated and cached at init time; fails immediately on corrupt/empty vocab
-5. **KV cache reset** — `llama_kv_cache_clear(ctx)` called before every inference to prevent stale state from prior runs
-6. **Inference serialization** — `NSLock` guard in `generate()` throws `inferenceBusy` if a call is already in flight
-7. **LLM Diagnostics** — phase tag updated to "PHASE 2B.7 — iOS COMPILE HARDENING"; Android rows no longer reference Phase 2C
-8. **Docs** — Android inference is described as a "dedicated future phase", not Phase 2C
-9. **Manual linking risk** documented — `prebuild --clean` wipes manual Xcode Package wiring; users must re-add the Swift Package after each prebuild
+5. **Inference serialization** — `NSLock` guard in `generate()` throws `inferenceBusy` if a call is already in flight
+6. **LLM Diagnostics** — phase tag updated to "PHASE 2B.7 — iOS COMPILE HARDENING"; Android rows no longer reference Phase 2C
+7. **Docs** — Android inference is described as a "dedicated future phase", not Phase 2C
+8. **Manual linking risk** documented — `prebuild --clean` wipes manual Xcode Package wiring; users must re-add the Swift Package after each prebuild
 
 ### ⚠️ Manual Swift Package linking risk
 
 Adding the llama.cpp Swift Package in Xcode is manual. Running `npx expo prebuild --clean` wipes the generated `ios/` directory, including all manually added Package targets. After every prebuild:
 
-1. Re-open `ios/nativeagent.xcworkspace` in Xcode
+1. Re-open `ios/NativeAgent.xcworkspace` in Xcode
 2. Re-add `https://github.com/ggml-org/llama.cpp` (product: **llama**, target: **NativeLLMRuntime**)
 3. Rebuild
 
@@ -119,7 +118,7 @@ A production-grade solution (config plugin, xcframework vendoring, or source ven
 
 ### How to validate Phase 2B.7 (iOS)
 
-1. `npx expo prebuild --clean && open ios/nativeagent.xcworkspace`
+1. `npx expo prebuild --clean && open ios/NativeAgent.xcworkspace`
 2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
 3. `npx expo run:ios`
 4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`, `supportsStreaming: false`, `supportsQuantizedModels: true`
@@ -142,7 +141,7 @@ API drift reference: `docs/LLAMA_CPP_API_COMPATIBILITY.md`
 
 ### How to validate Phase 2B.8 (iOS)
 
-1. `npx expo prebuild --clean && open ios/nativeagent.xcworkspace`
+1. `npx expo prebuild --clean && open ios/NativeAgent.xcworkspace`
 2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
 3. `npx expo run:ios`
 4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`

@@ -127,7 +127,7 @@ Adding the llama.cpp Swift Package in Xcode is **manual**. Running `npx expo pre
 
 **After every `npx expo prebuild --clean`:**
 
-1. Re-open `ios/nativeagent.xcworkspace`
+1. Re-open `ios/NativeAgent.xcworkspace`
 2. File → Add Package Dependencies → `https://github.com/ggml-org/llama.cpp`
 3. Product: **llama**, Target: **NativeLLMRuntime**
 4. Rebuild
@@ -145,12 +145,12 @@ cd mobile
 npx expo prebuild --clean
 ```
 
-This generates `ios/nativeagent.xcworkspace` with `NativeLLMRuntime` as a CocoaPod.
+This generates `ios/NativeAgent.xcworkspace` with `NativeLLMRuntime` as a CocoaPod.
 
 ### Step 2 — Open Xcode
 
 ```bash
-open ios/nativeagent.xcworkspace
+open ios/NativeAgent.xcworkspace
 ```
 
 ### Step 3 — Add Swift Package
@@ -158,7 +158,7 @@ open ios/nativeagent.xcworkspace
 In Xcode:
 1. **File → Add Package Dependencies…**
 2. Enter URL: `https://github.com/ggml-org/llama.cpp`
-3. Set version rule: **Up to Next Major** from the latest stable tag
+3. Version rule: **Exact Version** — pin to a known tested tag (e.g. `b4960`). Tracking "latest stable" or master risks silent API drift that breaks the Swift compile. See `docs/LLAMA_CPP_API_COMPATIBILITY.md` for the flag reference.
 4. Select product: **llama**
 5. Target: **NativeLLMRuntime** (the local module target, NOT the main app target)
 6. Click **Add Package**

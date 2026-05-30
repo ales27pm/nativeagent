@@ -125,6 +125,8 @@ enum LlamaCppCApiAdapter {
 
   /// Tokenizes `text` into `buffer`. Returns the number of tokens written.
   /// Uses withUnsafeMutableBufferPointer for safe C interop.
+  /// If llama_tokenize returns a negative count, abs(result) is the required buffer size;
+  /// the buffer is resized and the call is retried once. Throws tokenizationFailed on retry failure.
   /// Throws LlamaCppError.vocabUnavailable if vocab pointer is nil (current API).
   static func tokenize(
     model: OpaquePointer,
@@ -136,21 +138,44 @@ enum LlamaCppCApiAdapter {
   ) throws -> Int32 {
     let byteCount = Int32(text.utf8.count)
     #if LLAMA_CPP_LEGACY_API
-    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+    var result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
       guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
       return llama_tokenize(model, text, byteCount, base, maxTokens, addSpecial, parseSpecial)
     }
+    if result < 0 {
+      let required = Int(-result)
+      buffer = [llama_token](repeating: 0, count: required)
+      result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+        guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
+        return llama_tokenize(model, text, byteCount, base, Int32(required), addSpecial, parseSpecial)
+      }
+      if result < 0 { throw LlamaCppError.tokenizationFailed }
+    }
+    return result
     #else
     guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
-    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+    var result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
       guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
       return llama_tokenize(vocab, text, byteCount, base, maxTokens, addSpecial, parseSpecial)
     }
+    if result < 0 {
+      let required = Int(-result)
+      buffer = [llama_token](repeating: 0, count: required)
+      result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+        guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
+        return llama_tokenize(vocab, text, byteCount, base, Int32(required), addSpecial, parseSpecial)
+      }
+      if result < 0 { throw LlamaCppError.tokenizationFailed }
+    }
+    return result
     #endif
   }
 
   /// Converts a single token to its UTF-8 string piece.
   /// Uses withUnsafeMutableBufferPointer for safe C interop.
+  /// If llama_token_to_piece returns a negative value, abs(result) is the required byte count;
+  /// the buffer is resized and the call is retried once. Throws detokenizationFailed on retry failure.
+  /// There is no silent empty-string fallback — callers must handle thrown errors.
   /// Throws LlamaCppError.vocabUnavailable if vocab pointer is nil (current API).
   /// Returns the byte count written (> 0 on success).
   static func tokenToPiece(
@@ -160,16 +185,36 @@ enum LlamaCppCApiAdapter {
     special: Bool = false
   ) throws -> Int32 {
     #if LLAMA_CPP_LEGACY_API
-    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+    var result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
       guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
       return llama_token_to_piece(model, token, base, Int32(bufPtr.count), 0, special)
     }
+    if result < 0 {
+      let required = Int(-result)
+      buffer = [CChar](repeating: 0, count: required)
+      result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+        guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
+        return llama_token_to_piece(model, token, base, Int32(required), 0, special)
+      }
+      if result < 0 { throw LlamaCppError.detokenizationFailed }
+    }
+    return result
     #else
     guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
-    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+    var result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
       guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
       return llama_token_to_piece(vocab, token, base, Int32(bufPtr.count), 0, special)
     }
+    if result < 0 {
+      let required = Int(-result)
+      buffer = [CChar](repeating: 0, count: required)
+      result = try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+        guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
+        return llama_token_to_piece(vocab, token, base, Int32(required), 0, special)
+      }
+      if result < 0 { throw LlamaCppError.detokenizationFailed }
+    }
+    return result
     #endif
   }
 }

@@ -48,12 +48,38 @@ class NativeLLMRuntimeModule : Module() {
           "message" to "File not found at path: $localPath",
         )
       }
+      if (!file.canRead()) {
+        return@AsyncFunction mapOf(
+          "loaded" to false,
+          "modelId" to modelId,
+          "backend" to "none",
+          "message" to "File is not readable at path: $localPath",
+        )
+      }
+      val ext = file.extension.lowercase(Locale.US)
+      val supportedExtensions = setOf("gguf", "bin")
+      if (ext !in supportedExtensions) {
+        return@AsyncFunction mapOf(
+          "loaded" to false,
+          "modelId" to modelId,
+          "backend" to "none",
+          "message" to "Invalid model format. Expected .gguf, got .$ext. llama.cpp requires GGUF format.",
+        )
+      }
+      if (file.length() == 0L) {
+        return@AsyncFunction mapOf(
+          "loaded" to false,
+          "modelId" to modelId,
+          "backend" to "none",
+          "message" to "File is empty (0 bytes) at path: $localPath. The model file may be corrupt or the download was incomplete.",
+        )
+      }
 
       mapOf(
         "loaded" to false,
         "modelId" to modelId,
         "backend" to "none",
-        "message" to "File validated, but Android inference backend is not linked yet.",
+        "message" to "File validated (exists, readable, .$ext, ${file.length()} bytes), but Android inference backend is not linked yet.",
       )
     }
 

@@ -48,7 +48,7 @@ In Xcode:
 
 1. **File → Add Package Dependencies…**
 2. Enter URL: `https://github.com/ggml-org/llama.cpp`
-3. Version rule: **Up to Next Major Version** (from the latest stable tag)
+3. Version rule: **Exact Version** — pin to a known tested tag (e.g. `b4960`) rather than tracking "latest stable". If you use a moving branch or "Up to Next Major", llama.cpp API drift may break the Swift compile without warning. See `docs/LLAMA_CPP_API_COMPATIBILITY.md` for the flag reference.
 4. Product to add: **llama**
 5. Target: **NativeLLMRuntime** ← critical — NOT the main app target
 6. Click **Add Package**
