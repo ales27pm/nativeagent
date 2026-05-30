@@ -1,3 +1,4 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import {
@@ -33,7 +34,7 @@ type DevToolState =
   | { phase: 'idle' }
   | { phase: 'loading'; op: 'load' | 'unload' | 'smoke' }
   | { phase: 'result'; op: 'load' | 'unload'; message: string; ok: boolean }
-  | { phase: 'smoke-result'; result: RunInferenceResult }
+  | { phase: 'smoke-result'; result: RunInferenceResult; timestamp: string }
   | { phase: 'error'; op: 'load' | 'unload' | 'smoke'; message: string };
 
 export default function LLMDiagnosticsScreen(): React.JSX.Element {
@@ -133,7 +134,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     try {
       const result = await runInference({ modelId, prompt: SMOKE_PROMPT, maxTokens: 32 });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setDevState({ phase: 'smoke-result', result });
+      setDevState({ phase: 'smoke-result', result, timestamp: new Date().toISOString() });
     } catch (err) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const e = err as { message?: string };
@@ -165,10 +166,10 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     >
       {/* Phase notice */}
       <View style={styles.phaseNotice} testID="llm-phase-notice">
-        <Text style={styles.phaseTag}>PHASE 2B.7 — iOS COMPILE HARDENING</Text>
+        <Text style={styles.phaseTag}>PHASE 2B.9 — LOCAL XCODE SMOKE TEST</Text>
         <Text style={styles.phaseText}>
           {isIOS
-            ? 'Add the llama Swift Package → rebuild → load a .gguf model → run smoke test.\n' +
+            ? 'Prebuild → open Xcode → add ggml-org/llama.cpp Swift Package to NativeLLMRuntime → rebuild → load .gguf → run smoke test.\n' +
               'Android inference backend is planned for a dedicated future phase.'
             : 'Android inference backend is planned for a dedicated future phase.\n' +
               'iOS llama.cpp backend requires a dev build with the Swift Package linked.'}
@@ -380,13 +381,49 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
               </View>
             ) : devState.phase === 'smoke-result' ? (
               <View style={[styles.devResult, styles.devResultOk]} testID="llm-smoke-result">
-                <Text style={[styles.devResultTag, styles.tagOk]}>SMOKE PASS</Text>
-                <Text style={styles.devResultText}>
+                <View style={styles.smokeHeader}>
+                  <Text style={[styles.devResultTag, styles.tagOk]}>SMOKE PASS</Text>
+                  {devState.result.backend === 'llama_cpp' && isLinked && devState.result.text ? (
+                    <Text style={[styles.smokeNativeBadge]} testID="llm-smoke-native-badge">
+                      ✓ REAL NATIVE
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={styles.smokeOutput} testID="llm-smoke-output">
                   {`"${devState.result.text.trim()}"`}
                 </Text>
-                <Text style={styles.devResultMeta}>
-                  {`${devState.result.tokensGenerated} tokens · ${devState.result.durationMs}ms · ${devState.result.backend}`}
-                </Text>
+                <View style={styles.smokeFields}>
+                  <SmokeRow label="backend" value={devState.result.backend} />
+                  <SmokeRow label="modelId" value={devState.result.modelId} />
+                  <SmokeRow label="tokensSeen" value={String(devState.result.tokensSeen)} />
+                  <SmokeRow label="tokensGenerated" value={String(devState.result.tokensGenerated)} />
+                  <SmokeRow label="durationMs" value={`${devState.result.durationMs}ms`} />
+                  <SmokeRow label="timestamp" value={devState.timestamp} last />
+                </View>
+                <PressableScale
+                  onPress={() => {
+                    void Clipboard.setStringAsync(
+                      JSON.stringify(
+                        {
+                          backend: devState.result.backend,
+                          modelId: devState.result.modelId,
+                          tokensSeen: devState.result.tokensSeen,
+                          tokensGenerated: devState.result.tokensGenerated,
+                          durationMs: devState.result.durationMs,
+                          text: devState.result.text.trim(),
+                          timestamp: devState.timestamp,
+                        },
+                        null,
+                        2,
+                      ),
+                    );
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={styles.copyBtn}
+                  testID="llm-smoke-copy"
+                >
+                  <Text style={styles.copyBtnText}>COPY RESULT</Text>
+                </PressableScale>
               </View>
             ) : devState.phase === 'error' ? (
               <View style={[styles.devResult, styles.devResultErr]} testID="llm-dev-error">
@@ -593,6 +630,25 @@ function DevButton({
         {label}
       </Text>
     </PressableScale>
+  );
+}
+
+function SmokeRow({
+  label,
+  value,
+  last = false,
+}: {
+  label: string;
+  value: string;
+  last?: boolean;
+}): React.JSX.Element {
+  return (
+    <View style={[styles.smokeRow, last ? styles.smokeRowLast : null]}>
+      <Text style={styles.smokeRowLabel}>{label}</Text>
+      <Text style={styles.smokeRowValue} numberOfLines={1} ellipsizeMode="middle">
+        {value}
+      </Text>
+    </View>
   );
 }
 
@@ -877,6 +933,67 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: sizes.xs,
     color: colors.danger,
+    letterSpacing: tracking.wider,
+  },
+  // Smoke result expanded
+  smokeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  smokeNativeBadge: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.success,
+    letterSpacing: tracking.wider,
+  },
+  smokeOutput: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  smokeFields: {
+    borderTopColor: colors.successDim,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    gap: 1,
+  },
+  smokeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+    borderBottomColor: colors.successDim,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  smokeRowLast: { borderBottomWidth: 0 },
+  smokeRowLabel: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.textMuted,
+  },
+  smokeRowValue: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.textSub,
+    flexShrink: 1,
+    textAlign: 'right',
+    marginLeft: spacing.sm,
+  },
+  copyBtn: {
+    alignSelf: 'flex-start',
+    borderColor: colors.success,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  copyBtnText: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.success,
     letterSpacing: tracking.wider,
   },
 });

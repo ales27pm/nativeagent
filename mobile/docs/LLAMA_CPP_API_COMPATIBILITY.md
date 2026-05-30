@@ -165,6 +165,32 @@ Add these in Xcode → NativeLLMRuntime target → Build Settings → Other Swif
 
 ---
 
+## Current expected API path (Phase 2B.9)
+
+The following is the complete set of llama.cpp C API symbols called by NativeAgent when the current API is active (no compile flags set):
+
+```
+llama_backend_init()                      — backend init (may be removed in b4700+)
+llama_model_load_from_file(path, params)  — load model weights
+llama_init_from_model(model, params)      — create inference context
+llama_model_free(model)                   — free model weights
+llama_model_get_vocab(model)              — get vocab pointer (current API)
+llama_vocab_n_tokens(vocab)               — vocabulary size
+llama_vocab_eos(vocab)                    — EOS token
+llama_tokenize(vocab, text, ...)          — text → token IDs
+llama_token_to_piece(vocab, token, ...)   — token ID → text piece
+llama_batch_init(n, embd, n_seq_max)      — init batch
+llama_decode(ctx, batch)                  — run forward pass
+llama_get_logits(ctx)                     — read output logits
+llama_free(ctx)                           — free inference context
+```
+
+**`llama_kv_cache_clear` is NOT required.** Phase 2B.8 replaced KV cache reset with fresh-context-per-inference. `LlamaCppModelSession.generate()` creates a new `llama_context` at the start of each call and frees it in `defer { llama_free(ctx) }`. This is slower but avoids any dependency on `llama_kv_cache_clear` availability across Swift Package releases.
+
+If `llama_kv_cache_clear` appears anywhere in `LlamaCppCApiAdapter.swift`, it is stale code from Phase 2B.7 and should be removed.
+
+---
+
 ## Checking your llama.cpp version
 
 After adding the Swift Package, find the resolved version:
