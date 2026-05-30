@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useCallback } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import { colors } from '@/theme/colors';
 import { fonts, sizes, tracking } from '@/theme/typography';
@@ -54,8 +55,10 @@ export default function RootLayout(): React.JSX.Element | null {
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <StatusBar style="light" />
-      <RootLayoutNav />
+      <KeyboardProvider>
+        <StatusBar style="light" />
+        <RootLayoutNav />
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

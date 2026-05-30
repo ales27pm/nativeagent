@@ -1,8 +1,10 @@
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
+import { useCallback } from 'react';
+import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { ErrorPanel } from '@/components/ErrorPanel';
+import { PressableScale } from '@/components/PressableScale';
 import { getBridgeHealth } from '@/lib/bridgeHealth';
 import { validateSnapshot } from '@/features/runtime/snapshotValidator';
 import { useRuntimeSnapshot } from '@/features/runtime/useRuntimeSnapshot';
@@ -30,10 +32,20 @@ function formatBytes(bytes: number): string {
 
 export default function DiagnosticsScreen(): React.JSX.Element {
   const router = useRouter();
-  const { snapshot, error, refresh } = useRuntimeSnapshot();
+  const { snapshot, status, error, refresh } = useRuntimeSnapshot();
   const health = getBridgeHealth();
   const arch = detectNewArchitecture();
   const validation = snapshot !== null ? validateSnapshot(snapshot) : null;
+
+  const handleNav = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/llm-diagnostics');
+  }, [router]);
+
+  const handleRefresh = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void refresh();
+  }, [refresh]);
 
   return (
     <ScrollView
@@ -41,6 +53,14 @@ export default function DiagnosticsScreen(): React.JSX.Element {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       testID="diagnostics-screen"
+      refreshControl={
+        <RefreshControl
+          refreshing={status === 'loading'}
+          onRefresh={handleRefresh}
+          tintColor={colors.amber}
+          colors={[colors.amber]}
+        />
+      }
     >
       {/* Bridge Health */}
       <Block label="BRIDGE HEALTH">
@@ -161,14 +181,14 @@ export default function DiagnosticsScreen(): React.JSX.Element {
       {error !== null ? <ErrorPanel error={error} onRetry={refresh} /> : null}
 
       {/* Navigate to LLM diagnostics */}
-      <Pressable
-        onPress={() => router.push('/llm-diagnostics')}
+      <PressableScale
+        onPress={handleNav}
         style={styles.navButton}
         testID="nav-llm-diagnostics"
       >
         <Text style={styles.navButtonLabel}>LLM RUNTIME</Text>
         <Text style={styles.navButtonArrow}>{'▶'}</Text>
-      </Pressable>
+      </PressableScale>
     </ScrollView>
   );
 }
@@ -335,7 +355,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.lg,
+    minHeight: 44,
   },
   navButtonLabel: {
     fontFamily: fonts.mono,

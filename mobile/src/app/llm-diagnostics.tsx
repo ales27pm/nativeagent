@@ -1,8 +1,10 @@
+import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
-  Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +12,8 @@ import {
   View,
 } from 'react-native';
 
+import { PressableScale } from '@/components/PressableScale';
+import { SkeletonBlock } from '@/components/SkeletonBlock';
 import { useLLMRuntimeHealth } from '@/features/llm/useLLMRuntimeHealth';
 import { colors } from '@/theme/colors';
 import { radii, spacing } from '@/theme/spacing';
@@ -60,6 +64,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
   // ── Dev tool actions ──────────────────────────────────────────────────────
 
   async function handleLoad(): Promise<void> {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const path = modelPath.trim();
     if (path.length === 0) {
       setDevState({ phase: 'error', op: 'load', message: 'Enter a model file path first.' });
@@ -69,6 +74,11 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     setDevState({ phase: 'loading', op: 'load' });
     try {
       const result = await loadModel({ modelId, localPath: path });
+      void Haptics.notificationAsync(
+        result.loaded
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Warning,
+      );
       setDevState({
         phase: 'result',
         op: 'load',
@@ -76,12 +86,14 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
         ok: result.loaded,
       });
     } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const e = err as { message?: string };
       setDevState({ phase: 'error', op: 'load', message: e.message ?? 'Load failed.' });
     }
   }
 
   async function handleUnload(): Promise<void> {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const loadedId = health?.loadedModelId;
     if (loadedId === null || loadedId === undefined) {
       setDevState({ phase: 'error', op: 'unload', message: 'No model is currently loaded.' });
@@ -90,6 +102,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     setDevState({ phase: 'loading', op: 'unload' });
     try {
       const result = await unloadModel(loadedId);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDevState({
         phase: 'result',
         op: 'unload',
@@ -97,6 +110,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
         ok: result.unloaded,
       });
     } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const e = err as { message?: string };
       setDevState({ phase: 'error', op: 'unload', message: e.message ?? 'Unload failed.' });
     }
@@ -104,6 +118,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
 
   async function handleSmokeTest(): Promise<void> {
     if (!canInfer) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       const reason = !backendLinked
         ? 'llama.cpp not linked — add Swift Package and rebuild.'
         : health?.loadedModelId === null
@@ -112,12 +127,15 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
       setDevState({ phase: 'error', op: 'smoke', message: reason });
       return;
     }
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const modelId = health?.loadedModelId ?? '';
     setDevState({ phase: 'loading', op: 'smoke' });
     try {
       const result = await runInference({ modelId, prompt: SMOKE_PROMPT, maxTokens: 32 });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDevState({ phase: 'smoke-result', result });
     } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const e = err as { message?: string };
       setDevState({ phase: 'error', op: 'smoke', message: e.message ?? 'Inference failed.' });
     }
@@ -126,12 +144,24 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.kav}
+    >
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
       testID="llm-diagnostics-screen"
+      refreshControl={
+        <RefreshControl
+          refreshing={status === 'loading'}
+          onRefresh={() => void refresh()}
+          tintColor={colors.amber}
+          colors={[colors.amber]}
+        />
+      }
     >
       {/* Phase notice */}
       <View style={styles.phaseNotice} testID="llm-phase-notice">
@@ -147,6 +177,14 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
 
       {/* Runtime health */}
       <Block label="LLM RUNTIME HEALTH">
+        {status === 'loading' && health === null ? (
+          <View style={styles.skeletonPad}>
+            <SkeletonBlock height={14} width="70%" />
+            <SkeletonBlock height={14} width="55%" />
+            <SkeletonBlock height={14} width="80%" />
+            <SkeletonBlock height={14} width="45%" />
+          </View>
+        ) : null}
         <DataRow
           label="nativeAvailable"
           value={String(nativeAvailable)}
@@ -447,16 +485,20 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
         <View style={styles.errorPanel} testID="llm-error-panel">
           <Text style={styles.errorTag}>ERROR</Text>
           <Text style={styles.errorText}>{error}</Text>
-          <Pressable
-            onPress={() => void refresh()}
+          <PressableScale
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              void refresh();
+            }}
             style={styles.retryButton}
             testID="llm-retry-button"
           >
             <Text style={styles.retryText}>RETRY</Text>
-          </Pressable>
+          </PressableScale>
         </View>
       ) : null}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -531,7 +573,7 @@ function DevButton({
   testID?: string;
 }): React.JSX.Element {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
       disabled={disabled}
       style={[
@@ -550,7 +592,7 @@ function DevButton({
       >
         {label}
       </Text>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -567,7 +609,9 @@ function MetaChip({ label }: { label: string }): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
+  kav: { flex: 1, backgroundColor: colors.bg },
   scroll: { flex: 1, backgroundColor: colors.bg },
+  skeletonPad: { padding: spacing.lg, gap: spacing.md },
   content: {
     padding: spacing.xl,
     paddingBottom: spacing['4xl'],
@@ -694,7 +738,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: radii.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   devBtnHighlight: {
     borderColor: colors.amberBright,

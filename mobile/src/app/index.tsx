@@ -2,7 +2,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Link } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -15,6 +16,7 @@ import Animated, {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorPanel } from '@/components/ErrorPanel';
+import { PressableScale } from '@/components/PressableScale';
 import { RuntimeCard } from '@/components/RuntimeCard';
 import { useRuntimeSnapshot } from '@/features/runtime/useRuntimeSnapshot';
 import { colors } from '@/theme/colors';
@@ -118,6 +120,10 @@ export default function HomeScreen(): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
+  const handleDiagnostics = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
   return (
     <SafeAreaView edges={['top']} style={styles.safe} testID="home-screen">
       <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
@@ -133,6 +139,14 @@ export default function HomeScreen(): React.JSX.Element {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         testID="home-scroll"
+        refreshControl={
+          <RefreshControl
+            refreshing={status === 'loading'}
+            onRefresh={handleRefresh}
+            tintColor={colors.amber}
+            colors={[colors.amber]}
+          />
+        }
       >
         <FadeIn delay={0}>
           <View style={styles.sysBar}>
@@ -191,22 +205,23 @@ export default function HomeScreen(): React.JSX.Element {
 
         <FadeIn delay={1350}>
           <View style={styles.actions}>
-            <Pressable
+            <PressableScale
               onPress={handleRefresh}
-              style={({ pressed }) => [styles.btnPrimary, pressed && styles.pressed]}
+              style={styles.btnPrimary}
               accessibilityRole="button"
               testID="refresh-button"
             >
               <Text style={styles.btnPrimaryText}>▶  REFRESH RUNTIME</Text>
-            </Pressable>
+            </PressableScale>
             <Link href="/diagnostics" asChild>
-              <Pressable
-                style={({ pressed }) => [styles.btnOutline, pressed && styles.pressed]}
+              <PressableScale
+                onPress={handleDiagnostics}
+                style={styles.btnOutline}
                 accessibilityRole="button"
                 testID="diagnostics-button"
               >
                 <Text style={styles.btnOutlineText}>DIAGNOSTICS  →</Text>
-              </Pressable>
+              </PressableScale>
             </Link>
           </View>
         </FadeIn>
@@ -318,7 +333,6 @@ const styles = StyleSheet.create({
     color: colors.amber,
     letterSpacing: tracking.wider,
   },
-  pressed: { opacity: 0.6 },
   footer: {
     paddingTop: spacing.lg,
     borderTopColor: colors.border,
