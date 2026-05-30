@@ -1,4 +1,4 @@
-# iOS llama.cpp Backend — Phase 2B / 2B.6
+# iOS llama.cpp Backend — Phase 2B / 2B.7
 
 Implementation guide for the llama.cpp inference backend on iOS.
 
@@ -121,6 +121,21 @@ If all checks pass and llama.cpp is NOT linked:
 
 ---
 
+## ⚠️ Manual linking risk
+
+Adding the llama.cpp Swift Package in Xcode is **manual**. Running `npx expo prebuild --clean` regenerates the `ios/` directory and wipes all manually added Package targets. You must re-add the Swift Package after every prebuild.
+
+**After every `npx expo prebuild --clean`:**
+
+1. Re-open `ios/nativeagent.xcworkspace`
+2. File → Add Package Dependencies → `https://github.com/ggml-org/llama.cpp`
+3. Product: **llama**, Target: **NativeLLMRuntime**
+4. Rebuild
+
+A production-grade fix (Expo config plugin, xcframework vendoring, or SPM source vendoring into the repo) is planned for a later phase when llama.cpp is ready for production use.
+
+---
+
 ## How to link llama.cpp locally
 
 ### Step 1 — Prebuild
@@ -212,12 +227,16 @@ Other Swift Flags → -DLLAMA_CPP_NO_BACKEND_INIT
 
 Phase 2B uses argmax (greedy) sampling: at each step, pick the token with the highest logit.
 
-Phase 2C will add:
+Phase 2C (iOS) will add:
 - Temperature scaling
 - Top-P (nucleus) sampling
 - Top-K sampling
 - Repetition penalties
 - The llama.cpp sampler chain API
+- Token-by-token streaming
+- Cancellation support
+
+Android inference is planned for a dedicated future phase separate from Phase 2C.
 
 ---
 

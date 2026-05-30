@@ -2,7 +2,7 @@
 
 > Expo + React Native New Architecture + Native Runtime
 
-NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation. **Phase 2B** integrates a real iOS llama.cpp inference backend. **Phase 2B.5** adds link validation tooling. **Phase 2B.6** hardens the llama.cpp C API layer and cleans up drift.
+NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation. **Phase 2B** integrates a real iOS llama.cpp inference backend. **Phase 2B.5** adds link validation tooling. **Phase 2B.6** hardens the llama.cpp C API layer. **Phase 2B.7** hardens Swift C pointer safety, adds inference serialization, and fixes capability flags.
 
 This project is **not** an Expo Go app. It uses local Expo Modules written in **Swift** (iOS) and **Kotlin** (Android), which require a development build.
 
@@ -49,7 +49,7 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 6. `listInstalledModels()` — scans the app's Documents directory for `.gguf`, `.bin`, `.mlmodelc`, `.mlpackage` files
 7. `loadModel()` — validates file existence, returns `loaded: false` with typed message (no backend linked)
 8. `unloadModel()` — clears internal state
-9. `runInference()` — always throws `LLMInferenceNotImplementedError` (see below)
+9. `runInference()` — intentionally unavailable in Phase 2A; throws `LLMInferenceNotImplementedError`
 10. `useLLMRuntimeHealth` hook
 11. LLM diagnostics screen at `/llm-diagnostics`
 12. `docs/NATIVE_LLM_RUNTIME_CONTRACT.md`
@@ -95,12 +95,34 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 9. **`docs/LLAMA_CPP_API_COMPATIBILITY.md`** — new: API version matrix, flag reference, drift fix guide
 10. **All docs updated** to reflect current project state
 
-### How to validate Phase 2B.5 / 2B.6 (iOS)
+## What Phase 2B.7 ships
+
+1. **`supportsQuantizedModels`** fixed to `isLinked` (was incorrectly `true` when not linked)
+2. **`LlamaCppCApiAdapter`** hardened — `tokenize` and `tokenToPiece` use `withUnsafeMutableBufferPointer`; both throw typed `LlamaCppError` instead of silently returning error codes
+3. **New `LlamaCppError` cases** — `vocabUnavailable`, `emptyVocabulary`, `detokenizationFailed`, `invalidLogits`, `inferenceBusy`
+4. **`LlamaCppModelSession`** hardened — vocab size and EOS token validated and cached at init time; fails immediately on corrupt/empty vocab
+5. **KV cache reset** — `llama_kv_cache_clear(ctx)` called before every inference to prevent stale state from prior runs
+6. **Inference serialization** — `NSLock` guard in `generate()` throws `inferenceBusy` if a call is already in flight
+7. **LLM Diagnostics** — phase tag updated to "PHASE 2B.7 — iOS COMPILE HARDENING"; Android rows no longer reference Phase 2C
+8. **Docs** — Android inference is described as a "dedicated future phase", not Phase 2C
+9. **Manual linking risk** documented — `prebuild --clean` wipes manual Xcode Package wiring; users must re-add the Swift Package after each prebuild
+
+### ⚠️ Manual Swift Package linking risk
+
+Adding the llama.cpp Swift Package in Xcode is manual. Running `npx expo prebuild --clean` wipes the generated `ios/` directory, including all manually added Package targets. After every prebuild:
+
+1. Re-open `ios/nativeagent.xcworkspace` in Xcode
+2. Re-add `https://github.com/ggml-org/llama.cpp` (product: **llama**, target: **NativeLLMRuntime**)
+3. Rebuild
+
+A production-grade solution (config plugin, xcframework vendoring, or source vendoring) is planned for a later phase.
+
+### How to validate Phase 2B.7 (iOS)
 
 1. `npx expo prebuild --clean && open ios/nativeagent.xcworkspace`
 2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
 3. `npx expo run:ios`
-4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`, `supportsStreaming: false`
+4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`, `supportsStreaming: false`, `supportsQuantizedModels: true`
 5. Copy a small `.gguf` model into the simulator Documents folder
 6. Paste path in MODEL PATH input → **LOAD MODEL** → **SMOKE TEST**
 7. Smoke result panel shows real generated text + token count + `durationMs`
@@ -313,7 +335,7 @@ The Expo autolinker scans `modules/` at the project root automatically when preb
 
 The runtime bridge in Phase 1 exists to anchor the following future modules:
 
-- **NativeLLMRuntime** ✓ Phase 2B.6 complete — iOS llama.cpp real inference; streaming in Phase 2C
+- **NativeLLMRuntime** ✓ Phase 2B.7 complete — iOS llama.cpp real inference, hardened; streaming Phase 2C (iOS only)
 - **NativeEmbeddingRuntime** — fast vector embedding generation on-device
 - **NativeTokenizerRuntime** — sentence-piece / BPE tokenization native pass-through
 - **NativeAudioRuntime** — low-latency audio capture and VAD for voice agents

@@ -135,13 +135,13 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     >
       {/* Phase notice */}
       <View style={styles.phaseNotice} testID="llm-phase-notice">
-        <Text style={styles.phaseTag}>PHASE 2B.5 — iOS LINK VALIDATION</Text>
+        <Text style={styles.phaseTag}>PHASE 2B.7 — iOS COMPILE HARDENING</Text>
         <Text style={styles.phaseText}>
           {isIOS
             ? 'Add the llama Swift Package → rebuild → load a .gguf model → run smoke test.\n' +
-              'Android: inference backend not integrated (Phase 2C).'
-            : 'Android: inference backend not integrated in Phase 2B.\n' +
-              'iOS llama.cpp backend will be available in a dev build.'}
+              'Android inference backend is planned for a dedicated future phase.'
+            : 'Android inference backend is planned for a dedicated future phase.\n' +
+              'iOS llama.cpp backend requires a dev build with the Swift Package linked.'}
         </Text>
       </View>
 
@@ -250,7 +250,7 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
         />
         <DataRow
           label="Android backend"
-          value="none — Phase 2C"
+          value="none — planned later"
           danger={Platform.OS === 'android'}
           last
         />
@@ -426,11 +426,11 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
         />
         <DataRow
           label="streaming"
-          value="Phase 2C (greedy only in 2B)"
+          value="Phase 2C — iOS only (greedy only now)"
         />
         <DataRow
           label="cancellation"
-          value="Phase 2C"
+          value="Phase 2C — iOS only"
           last
         />
       </Block>
@@ -439,8 +439,8 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
       <Block label="BACKEND ROADMAP">
         <DataRow label="iOS (current)" value="llama.cpp (GGUF)" highlight={isIOS} />
         <DataRow label="iOS (next)" value="MLX Swift (Apple Silicon)" />
-        <DataRow label="Android (next)" value="llama.cpp JNI — Phase 2C" />
-        <DataRow label="Android (alt)" value="ExecuTorch / MediaPipe" last />
+        <DataRow label="Android (next)" value="dedicated Android backend phase" />
+        <DataRow label="Android options" value="llama.cpp JNI / ExecuTorch / MediaPipe" last />
       </Block>
 
       {error !== null ? (

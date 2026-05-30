@@ -45,7 +45,7 @@ final class LlamaCppBackend: LLMBackend {
   // These must remain false regardless of whether llama.cpp is linked.
   var supportsStreaming: Bool { false }
   var supportsCancellation: Bool { false }
-  var supportsQuantizedModels: Bool { true }  // GGUF Q4/Q8 supported
+  var supportsQuantizedModels: Bool { isLinked }  // only meaningful when linked
   var supportedFormats: [String] {
     #if canImport(llama)
     return ["gguf"]

@@ -1,7 +1,7 @@
 {
   "name": "native-llm-runtime",
   "version": "0.1.0",
-  "description": "Native LLM runtime lifecycle and contract bridge for NativeAgent. No inference in Phase 2A. iOS in Swift, Android in Kotlin, built on the Expo Modules API.",
+  "description": "Native LLM runtime bridge for NativeAgent. iOS llama.cpp backend with real inference when linked; Android backend not linked yet. No fake inference at any layer. iOS in Swift, Android in Kotlin, built on the Expo Modules API.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "private": true,

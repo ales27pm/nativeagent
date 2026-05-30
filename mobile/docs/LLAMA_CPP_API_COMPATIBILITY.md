@@ -120,6 +120,18 @@ Other Swift Flags → -DLLAMA_CPP_LEGACY_API
 
 ---
 
+## Additional hardening (Phase 2B.7)
+
+Phase 2B.7 added these changes to the adapter:
+- `tokenize` and `tokenToPiece` now use `withUnsafeMutableBufferPointer` for safe C array interop
+- Both methods `throws` — vocab unavailability surfaces as `LlamaCppError.vocabUnavailable`
+- `vocabSize` and `eosToken` now `throws` — empty vocabulary surfaces as `LlamaCppError.emptyVocabulary`
+- `clearKVCache(_:)` added — wraps `llama_kv_cache_clear` for the session to call before each inference
+
+These changes do not affect the compile flag interface. `-DLLAMA_CPP_LEGACY_API` and `-DLLAMA_CPP_NO_BACKEND_INIT` work the same as before.
+
+---
+
 ## Compile flag reference
 
 | Flag | Effect |

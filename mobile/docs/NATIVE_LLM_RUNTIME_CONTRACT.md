@@ -40,15 +40,25 @@ API contract, native lifecycle, unavailable states, error codes, and backend dec
 - `supportsStreaming` fixed to `false` (was incorrectly `isLinked`)
 - `supportedFormats` now `['gguf']` when linked, `[]` when not linked
 - `llama_backend_init()` one-time call via adapter static initializer
-- Android stale messages updated (no more Phase 2B references)
+- Android stale messages updated
 - `docs/LLAMA_CPP_API_COMPATIBILITY.md` — API version drift reference
 - App config naming hardened (name, slug, scheme, bundleIdentifier, package)
 
-**Phase 2B does NOT include:**
-- Temperature / top-P / top-K sampling (Phase 2C)
-- Streaming token output (Phase 2C)
-- Cancellation (Phase 2C)
-- Android inference backend (future phase)
+**Phase 2B.7 adds:**
+- `supportsQuantizedModels` fixed to `isLinked` (was incorrectly `true` when not linked)
+- `LlamaCppCApiAdapter.tokenize` / `tokenToPiece` — use `withUnsafeMutableBufferPointer`, throw typed errors
+- New `LlamaCppError` cases: `vocabUnavailable`, `emptyVocabulary`, `detokenizationFailed`, `invalidLogits`, `inferenceBusy`
+- `LlamaCppModelSession` — vocab size and EOS token validated and cached at init; fails fast on corrupt/empty vocab
+- KV cache reset (`llama_kv_cache_clear`) before every inference — prevents stale state from prior runs
+- Inference serialization via `NSLock` — throws `inferenceBusy` if inference is already running
+- LLM Diagnostics phase tag updated to "PHASE 2B.7 — iOS COMPILE HARDENING"
+- Android diagnostics no longer reference Phase 2C for the Android backend
+
+**Not included in Phase 2B:**
+- Temperature / top-P / top-K sampling (Phase 2C, iOS)
+- Streaming token output (Phase 2C, iOS)
+- Cancellation (Phase 2C, iOS)
+- Android inference backend (dedicated future phase, not Phase 2C)
 - MLX Swift backend (future phase)
 
 ---
@@ -187,7 +197,7 @@ class LLMInferenceNotImplementedError   // code: 'INFERENCE_NOT_IMPLEMENTED'
 
 ## Native lifecycle
 
-### Current state (Phase 2B.6)
+### Current state (Phase 2B.7)
 
 ```
 App launch
@@ -242,9 +252,9 @@ Supported file formats discovered:
 
 | Backend | Platform | Format | Quantization | Streaming | Status |
 |---------|----------|--------|:---:|:---:|-------|
-| llama.cpp | iOS (linked) | GGUF | Q4_K_M, Q8_0, F16 | Phase 2C | Real inference on iOS |
-| llama.cpp | Android | GGUF | — | — | Planned (future phase) |
-| MLX Swift | iOS only | MLX weights | Varies | Phase 2C | Planned (future phase) |
+| llama.cpp | iOS (linked) | GGUF | Q4_K_M, Q8_0, F16 | Phase 2C (iOS) | Real inference on iOS |
+| llama.cpp | Android | GGUF | — | — | Planned (dedicated Android phase) |
+| MLX Swift | iOS only | MLX weights | Varies | Phase 2C (iOS) | Planned (future phase) |
 | Core ML | iOS only | .mlmodelc / .mlpackage | INT4, INT8 | Partial | Planned (future phase) |
 | ExecuTorch | Android (iOS beta) | .pte | INT8 | — | Planned (future phase) |
 | MediaPipe | Android | .bin / .task | INT4, INT8 | — | Planned (future phase) |

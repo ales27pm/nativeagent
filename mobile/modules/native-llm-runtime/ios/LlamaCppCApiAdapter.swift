@@ -80,6 +80,13 @@ enum LlamaCppCApiAdapter {
     #endif
   }
 
+  // MARK: - KV cache
+
+  /// Clear the entire KV cache before each inference to prevent stale state.
+  static func clearKVCache(_ ctx: OpaquePointer) {
+    llama_kv_cache_clear(ctx)
+  }
+
   // MARK: - Vocab accessors
 
   /// Returns vocab pointer (current API) or nil for legacy API (use model pointer directly).
@@ -91,26 +98,35 @@ enum LlamaCppCApiAdapter {
     #endif
   }
 
-  static func vocabSize(model: OpaquePointer) -> Int {
+  /// Returns vocabulary size. Throws if the vocab pointer is unavailable or the size is 0.
+  static func vocabSize(model: OpaquePointer) throws -> Int {
     #if LLAMA_CPP_LEGACY_API
-    return Int(llama_n_vocab(model))
+    let n = Int(llama_n_vocab(model))
+    guard n > 0 else { throw LlamaCppError.emptyVocabulary }
+    return n
     #else
-    guard let vocab = llama_model_get_vocab(model) else { return 0 }
-    return Int(llama_vocab_n_tokens(vocab))
+    guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
+    let n = Int(llama_vocab_n_tokens(vocab))
+    guard n > 0 else { throw LlamaCppError.emptyVocabulary }
+    return n
     #endif
   }
 
-  static func eosToken(model: OpaquePointer) -> llama_token {
+  /// Returns the EOS token. Throws if the vocab pointer is unavailable.
+  static func eosToken(model: OpaquePointer) throws -> llama_token {
     #if LLAMA_CPP_LEGACY_API
     return llama_token_eos(model)
     #else
-    guard let vocab = llama_model_get_vocab(model) else { return -1 }
+    guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
     return llama_vocab_eos(vocab)
     #endif
   }
 
   // MARK: - Tokenization
 
+  /// Tokenizes `text` into `buffer`. Returns the number of tokens written.
+  /// Uses withUnsafeMutableBufferPointer for safe C interop.
+  /// Throws LlamaCppError.vocabUnavailable if vocab pointer is nil (current API).
   static func tokenize(
     model: OpaquePointer,
     text: String,
@@ -118,28 +134,43 @@ enum LlamaCppCApiAdapter {
     parseSpecial: Bool,
     buffer: inout [llama_token],
     maxTokens: Int32
-  ) -> Int32 {
-    let bytes = Array(text.utf8)
-    let byteCount = Int32(bytes.count)
+  ) throws -> Int32 {
+    let byteCount = Int32(text.utf8.count)
     #if LLAMA_CPP_LEGACY_API
-    return llama_tokenize(model, text, byteCount, &buffer, maxTokens, addSpecial, parseSpecial)
+    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+      guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
+      return llama_tokenize(model, text, byteCount, base, maxTokens, addSpecial, parseSpecial)
+    }
     #else
-    guard let vocab = llama_model_get_vocab(model) else { return -1 }
-    return llama_tokenize(vocab, text, byteCount, &buffer, maxTokens, addSpecial, parseSpecial)
+    guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
+    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+      guard let base = bufPtr.baseAddress else { throw LlamaCppError.tokenizationFailed }
+      return llama_tokenize(vocab, text, byteCount, base, maxTokens, addSpecial, parseSpecial)
+    }
     #endif
   }
 
+  /// Converts a single token to its UTF-8 string piece.
+  /// Uses withUnsafeMutableBufferPointer for safe C interop.
+  /// Throws LlamaCppError.vocabUnavailable if vocab pointer is nil (current API).
+  /// Returns the byte count written (> 0 on success).
   static func tokenToPiece(
     model: OpaquePointer,
     token: llama_token,
     buffer: inout [CChar],
     special: Bool = false
-  ) -> Int32 {
+  ) throws -> Int32 {
     #if LLAMA_CPP_LEGACY_API
-    return llama_token_to_piece(model, token, &buffer, Int32(buffer.count), 0, special)
+    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+      guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
+      return llama_token_to_piece(model, token, base, Int32(bufPtr.count), 0, special)
+    }
     #else
-    guard let vocab = llama_model_get_vocab(model) else { return 0 }
-    return llama_token_to_piece(vocab, token, &buffer, Int32(buffer.count), 0, special)
+    guard let vocab = llama_model_get_vocab(model) else { throw LlamaCppError.vocabUnavailable }
+    return try buffer.withUnsafeMutableBufferPointer { bufPtr throws -> Int32 in
+      guard let base = bufPtr.baseAddress else { throw LlamaCppError.detokenizationFailed }
+      return llama_token_to_piece(vocab, token, base, Int32(bufPtr.count), 0, special)
+    }
     #endif
   }
 }
