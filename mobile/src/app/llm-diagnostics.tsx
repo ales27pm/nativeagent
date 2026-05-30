@@ -1,6 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import React, { useState } from 'react';
+import * as ContextMenu from 'zeego/context-menu';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -19,7 +20,7 @@ import { useLLMRuntimeHealth } from '@/features/llm/useLLMRuntimeHealth';
 import { colors } from '@/theme/colors';
 import { radii, spacing } from '@/theme/spacing';
 import { fonts, sizes, tracking } from '@/theme/typography';
-import type { RunInferenceResult } from 'native-llm-runtime';
+import type { InstalledLLMModel, RunInferenceResult } from 'native-llm-runtime';
 
 const SMOKE_PROMPT = 'Q: What is 2+2? A:';
 
@@ -139,6 +140,40 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const e = err as { message?: string };
       setDevState({ phase: 'error', op: 'smoke', message: e.message ?? 'Inference failed.' });
+    }
+  }
+
+  // ── Context menu direct actions (bypass path state) ──────────────────────
+
+  async function loadModelDirect(model: InstalledLLMModel): Promise<void> {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDevState({ phase: 'loading', op: 'load' });
+    try {
+      const result = await loadModel({ modelId: model.id, localPath: model.localPath });
+      void Haptics.notificationAsync(
+        result.loaded
+          ? Haptics.NotificationFeedbackType.Success
+          : Haptics.NotificationFeedbackType.Warning,
+      );
+      setDevState({ phase: 'result', op: 'load', message: result.message, ok: result.loaded });
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const e = err as { message?: string };
+      setDevState({ phase: 'error', op: 'load', message: e.message ?? 'Load failed.' });
+    }
+  }
+
+  async function unloadModelDirect(modelId: string): Promise<void> {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDevState({ phase: 'loading', op: 'unload' });
+    try {
+      const result = await unloadModel(modelId);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setDevState({ phase: 'result', op: 'unload', message: result.message, ok: result.unloaded });
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const e = err as { message?: string };
+      setDevState({ phase: 'error', op: 'unload', message: e.message ?? 'Unload failed.' });
     }
   }
 
@@ -454,26 +489,80 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
             no models found in app documents directory
           </Text>
         ) : (
-          installedModels.map((model, i) => (
-            <View key={model.id} style={styles.modelCard}>
-              <Text style={styles.modelName}>{model.name}</Text>
-              <View style={styles.modelMeta}>
-                <MetaChip label={model.format} />
-                <MetaChip label={formatBytes(model.sizeBytes)} />
-              </View>
-              <Text
-                style={styles.modelPath}
-                numberOfLines={1}
-                ellipsizeMode="middle"
-                selectable
-              >
-                {model.localPath}
-              </Text>
-              {i < installedModels.length - 1 ? (
-                <View style={styles.modelDivider} />
-              ) : null}
-            </View>
-          ))
+          installedModels.map((model, i) => {
+            const isThisLoaded = health?.loadedModelId === model.id;
+            return (
+              <ContextMenu.Root key={model.id}>
+                <ContextMenu.Trigger asChild>
+                  <View style={styles.modelCard}>
+                    <Text style={styles.modelName}>{model.name}</Text>
+                    <View style={styles.modelMeta}>
+                      <MetaChip label={model.format} />
+                      <MetaChip label={formatBytes(model.sizeBytes)} />
+                      {isThisLoaded ? <MetaChip label="loaded" /> : null}
+                    </View>
+                    <Text
+                      style={styles.modelPath}
+                      numberOfLines={1}
+                      ellipsizeMode="middle"
+                    >
+                      {model.localPath}
+                    </Text>
+                    {i < installedModels.length - 1 ? (
+                      <View style={styles.modelDivider} />
+                    ) : null}
+                  </View>
+                </ContextMenu.Trigger>
+                <ContextMenu.Content>
+                  <ContextMenu.Label>{model.name}</ContextMenu.Label>
+                  <ContextMenu.Item
+                    key="model-load"
+                    disabled={devState.phase === 'loading' || isThisLoaded}
+                    onSelect={() => void loadModelDirect(model)}
+                  >
+                    <ContextMenu.ItemTitle>Load Model</ContextMenu.ItemTitle>
+                    <ContextMenu.ItemIcon
+                      ios={{ name: 'arrow.up.circle' }}
+                      androidIconName="play_arrow"
+                    />
+                  </ContextMenu.Item>
+                  {isThisLoaded ? (
+                    <ContextMenu.Item
+                      key="model-unload"
+                      destructive
+                      onSelect={() => void unloadModelDirect(model.id)}
+                    >
+                      <ContextMenu.ItemTitle>Unload</ContextMenu.ItemTitle>
+                      <ContextMenu.ItemIcon
+                        ios={{ name: 'eject.circle' }}
+                        androidIconName="stop"
+                      />
+                    </ContextMenu.Item>
+                  ) : null}
+                  <ContextMenu.Item
+                    key="model-copy-path"
+                    onSelect={() => void Clipboard.setStringAsync(model.localPath)}
+                  >
+                    <ContextMenu.ItemTitle>Copy Path</ContextMenu.ItemTitle>
+                    <ContextMenu.ItemIcon
+                      ios={{ name: 'doc.on.doc' }}
+                      androidIconName="content_copy"
+                    />
+                  </ContextMenu.Item>
+                  <ContextMenu.Item
+                    key="model-copy-name"
+                    onSelect={() => void Clipboard.setStringAsync(model.name)}
+                  >
+                    <ContextMenu.ItemTitle>Copy Name</ContextMenu.ItemTitle>
+                    <ContextMenu.ItemIcon
+                      ios={{ name: 'doc.text' }}
+                      androidIconName="text_snippet"
+                    />
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Root>
+            );
+          })
         )}
         {nativeAvailable ? (
           <DataRow
@@ -578,21 +667,38 @@ function DataRow({
       : colors.textSub;
 
   return (
-    <View style={[styles.row, last ? styles.rowLast : null]}>
-      <Text style={styles.rowLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <View style={styles.rowRight}>
-        <Text style={styles.rowArrow}>{'▸'}</Text>
-        <Text
-          style={[styles.rowValue, { color: valueColor }]}
-          numberOfLines={2}
-          ellipsizeMode="tail"
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <View style={[styles.row, last ? styles.rowLast : null]}>
+          <Text style={styles.rowLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <View style={styles.rowRight}>
+            <Text style={styles.rowArrow}>{'▸'}</Text>
+            <Text
+              style={[styles.rowValue, { color: valueColor }]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {value}
+            </Text>
+          </View>
+        </View>
+      </ContextMenu.Trigger>
+      <ContextMenu.Content>
+        <ContextMenu.Label>{label}</ContextMenu.Label>
+        <ContextMenu.Item
+          key="row-copy-value"
+          onSelect={() => void Clipboard.setStringAsync(value)}
         >
-          {value}
-        </Text>
-      </View>
-    </View>
+          <ContextMenu.ItemTitle>Copy Value</ContextMenu.ItemTitle>
+          <ContextMenu.ItemIcon
+            ios={{ name: 'doc.on.doc' }}
+            androidIconName="content_copy"
+          />
+        </ContextMenu.Item>
+      </ContextMenu.Content>
+    </ContextMenu.Root>
   );
 }
 

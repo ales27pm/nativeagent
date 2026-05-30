@@ -1,7 +1,9 @@
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useCallback } from 'react';
 import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as ContextMenu from 'zeego/context-menu';
 
 import { ErrorPanel } from '@/components/ErrorPanel';
 import { PressableScale } from '@/components/PressableScale';
@@ -228,21 +230,38 @@ function DataRow({
       : colors.textSub;
 
   return (
-    <View style={[styles.row, last ? styles.rowLast : null]}>
-      <Text style={styles.rowLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <View style={styles.rowRight}>
-        <Text style={styles.rowArrow}>{'▸'}</Text>
-        <Text
-          style={[styles.rowValue, { color: valueColor }]}
-          numberOfLines={2}
-          ellipsizeMode="tail"
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <View style={[styles.row, last ? styles.rowLast : null]}>
+          <Text style={styles.rowLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <View style={styles.rowRight}>
+            <Text style={styles.rowArrow}>{'▸'}</Text>
+            <Text
+              style={[styles.rowValue, { color: valueColor }]}
+              numberOfLines={2}
+              ellipsizeMode="tail"
+            >
+              {value}
+            </Text>
+          </View>
+        </View>
+      </ContextMenu.Trigger>
+      <ContextMenu.Content>
+        <ContextMenu.Label>{label}</ContextMenu.Label>
+        <ContextMenu.Item
+          key="row-copy-value"
+          onSelect={() => void Clipboard.setStringAsync(value)}
         >
-          {value}
-        </Text>
-      </View>
-    </View>
+          <ContextMenu.ItemTitle>Copy Value</ContextMenu.ItemTitle>
+          <ContextMenu.ItemIcon
+            ios={{ name: 'doc.on.doc' }}
+            androidIconName="content_copy"
+          />
+        </ContextMenu.Item>
+      </ContextMenu.Content>
+    </ContextMenu.Root>
   );
 }
 
