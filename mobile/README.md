@@ -2,7 +2,7 @@
 
 > Expo + React Native New Architecture + Native Runtime
 
-NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation — without inference.
+NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation. **Phase 2B** integrates a real iOS llama.cpp inference backend. **Phase 2B.5** adds link validation tooling. **Phase 2B.6** hardens the llama.cpp C API layer and cleans up drift.
 
 This project is **not** an Expo Go app. It uses local Expo Modules written in **Swift** (iOS) and **Kotlin** (Android), which require a development build.
 
@@ -62,7 +62,7 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 4. **`LlamaCppError.swift`** — typed error enum for every llama.cpp failure mode
 5. **Rewritten `NativeLLMRuntimeModule.swift`** — routes all calls through the backend protocol
 6. **Real `loadModel` validation**: file exists → readable → `.gguf` extension → size > 0 bytes
-7. **Real `loadModel` execution** (iOS + llama.cpp linked): `llama_load_model_from_file` + context init
+7. **Real `loadModel` execution** (iOS + llama.cpp linked): `llama_model_load_from_file` + context init
 8. **Real `runInference`** (iOS + llama.cpp linked): greedy token-sampling loop via llama.cpp C API
 9. New TypeScript types: `RunInferenceRequest`, `RunInferenceResult`, `LLMRuntimeErrorCode`
 10. New TypeScript error classes: `BackendUnavailableError`, `ModelNotLoadedError`, `ModelLoadFailedError`, `LLMInferenceNotImplementedError`
@@ -72,27 +72,41 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 
 ## What Phase 2B.5 ships
 
-1. **`isLinked: boolean`** added to `LLMRuntimeHealth` — exposes whether the native inference library is compiled into the binary
-2. **`durationMs: number`** added to `RunInferenceResult` — real wall-clock timing from `Date()` start to greedy sample loop end
+1. **`isLinked: boolean`** added to `LLMRuntimeHealth`
+2. **`durationMs: number`** added to `RunInferenceResult`
 3. **Updated LLM Diagnostics screen**: `isLinked` row, "llama.cpp linked yes/no" and "GGUF ready yes/no" rows in backend status
-4. **DEV TOOLS block on LLM Diagnostics**: `TextInput` for model path, Load Model button, Unload Model button, Run Smoke Test button
-5. **Smoke test**: prompt `"Q: What is 2+2? A:"` — only enabled when `backend === 'llama_cpp'` AND `isLinked === true` AND model loaded; shows typed errors on failure, never fakes success
+4. **DEV TOOLS block on LLM Diagnostics**: model path input, Load Model, Unload Model, Run Smoke Test buttons
+5. **Smoke test**: prompt `"Q: What is 2+2? A:"` — only enabled when `backend === 'llama_cpp'` AND `isLinked === true` AND model loaded; never fakes success
 6. **`useLLMRuntimeHealth` hook** extended with `loadModel`, `unloadModel`, `runInference` actions
-7. **Android `NativeLLMRuntimeModule.kt`** updated to include `isLinked: false` and `supportedFormats: []` in health map
-8. **`docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`** — complete step-by-step: prebuild → Xcode Package add → rebuild → model copy → smoke test
-9. **`docs/IOS_LLAMA_CPP_BACKEND.md`** updated with link validation section, common compile errors, memory pressure warning
+7. **Android `NativeLLMRuntimeModule.kt`** updated to include `isLinked: false` and `supportedFormats: []`
+8. **`docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`** — prebuild → Xcode Package add → rebuild → model copy → smoke test
+9. **`docs/IOS_LLAMA_CPP_BACKEND.md`** updated with link validation section, compile errors, memory pressure warning
 
-### How to validate Phase 2B.5 (iOS)
+## What Phase 2B.6 ships
 
-1. `npx expo prebuild --clean && open ios/<Project>.xcworkspace`
+1. **`LlamaCppCApiAdapter.swift`** — new file isolating all llama.cpp C API calls behind stable Swift helper methods; handles API version drift via `-DLLAMA_CPP_LEGACY_API` compile flag
+2. **`LlamaCppModelSession.swift`** updated — now calls adapter methods only, never raw C API symbols
+3. **`supportsStreaming`** fixed to `false` (was incorrectly tied to `isLinked`)
+4. **`supportsCancellation`** confirmed `false`
+5. **`supportedFormats`** now `['gguf']` when llama.cpp linked, `[]` when not linked
+6. **`llama_backend_init()`** called once via adapter static initializer (skippable with `-DLLAMA_CPP_NO_BACKEND_INIT`)
+7. **Android messages** updated — no stale Phase 2B references
+8. **App config** hardened — name, slug, scheme, bundleIdentifier, package set explicitly
+9. **`docs/LLAMA_CPP_API_COMPATIBILITY.md`** — new: API version matrix, flag reference, drift fix guide
+10. **All docs updated** to reflect current project state
+
+### How to validate Phase 2B.5 / 2B.6 (iOS)
+
+1. `npx expo prebuild --clean && open ios/nativeagent.xcworkspace`
 2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
 3. `npx expo run:ios`
-4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`
+4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`, `supportsStreaming: false`
 5. Copy a small `.gguf` model into the simulator Documents folder
 6. Paste path in MODEL PATH input → **LOAD MODEL** → **SMOKE TEST**
 7. Smoke result panel shows real generated text + token count + `durationMs`
 
-Full guide: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`
+Full guide: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`  
+API drift reference: `docs/LLAMA_CPP_API_COMPATIBILITY.md`
 
 ---
 
@@ -117,25 +131,14 @@ Full guide: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`
 
 Full step-by-step: `docs/IOS_LLAMA_CPP_BACKEND.md`
 
-### Why `runInference` is forbidden in Phase 2A
+### Why fake inference is forbidden
 
 Returning fake generated text — even as a placeholder — would:
 - Let tests pass against output that doesn't come from a real model
 - Create developer confusion about what is actually working
 - Violate user trust if ever shown in a real session
 
-`runInference` throws `LLMInferenceNotImplementedError` unconditionally until Phase 2B integrates a real inference backend.
-
-### Phase 2B plan
-
-**iOS options:**
-- `llama.cpp` via Swift wrapper — widest GGUF model compatibility
-- MLX Swift — fastest on Apple Silicon (M-series) devices
-
-**Android options:**
-- `llama.cpp` Android JNI — same `.gguf` model files as iOS
-- ExecuTorch (Meta) — Llama family, `.pte` format
-- MediaPipe LLM Inference — easiest Android integration, `.bin`/`.task` format
+`runInference` throws errors with clear messages until a real backend is linked, a model is loaded, and the greedy sampling loop produces actual tokens.
 
 ---
 
@@ -243,7 +246,10 @@ mobile/
 └── docs/
     ├── LOCAL_NATIVE_BUILD_CHECKLIST.md
     ├── NATIVE_MODULE_TROUBLESHOOTING.md
-    └── NATIVE_LLM_RUNTIME_CONTRACT.md
+    ├── NATIVE_LLM_RUNTIME_CONTRACT.md
+    ├── IOS_LLAMA_CPP_BACKEND.md
+    ├── IOS_LLAMA_CPP_LINK_VALIDATION.md
+    └── LLAMA_CPP_API_COMPATIBILITY.md
 ```
 
 ---
@@ -307,7 +313,7 @@ The Expo autolinker scans `modules/` at the project root automatically when preb
 
 The runtime bridge in Phase 1 exists to anchor the following future modules:
 
-- **NativeLLMRuntime** ✓ Phase 2A contract complete — inference in Phase 2B
+- **NativeLLMRuntime** ✓ Phase 2B.6 complete — iOS llama.cpp real inference; streaming in Phase 2C
 - **NativeEmbeddingRuntime** — fast vector embedding generation on-device
 - **NativeTokenizerRuntime** — sentence-piece / BPE tokenization native pass-through
 - **NativeAudioRuntime** — low-latency audio capture and VAD for voice agents

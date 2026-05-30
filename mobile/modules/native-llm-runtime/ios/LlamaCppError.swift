@@ -31,7 +31,7 @@ enum LlamaCppError: LocalizedError {
       return "File is empty (0 bytes) at path: \(path). " +
         "The model file may be corrupt or the download was incomplete."
     case .contextInitFailed:
-      return "llama_new_context_with_model returned null. " +
+      return "Context initialization returned null. " +
         "The model may require more RAM than is available, " +
         "or the context length is too large for this device."
     case .tokenizationFailed:

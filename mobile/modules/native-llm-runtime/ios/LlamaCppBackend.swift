@@ -41,10 +41,18 @@ final class LlamaCppBackend: LLMBackend {
     #endif
   }
 
-  var supportsStreaming: Bool { isLinked }
-  var supportsCancellation: Bool { false }  // cancellable in Phase 2C
+  // Streaming and cancellation are not implemented until Phase 2C.
+  // These must remain false regardless of whether llama.cpp is linked.
+  var supportsStreaming: Bool { false }
+  var supportsCancellation: Bool { false }
   var supportsQuantizedModels: Bool { true }  // GGUF Q4/Q8 supported
-  var supportedFormats: [String] { ["gguf"] }
+  var supportedFormats: [String] {
+    #if canImport(llama)
+    return ["gguf"]
+    #else
+    return []
+    #endif
+  }
 
   func reasonNotLinked() -> String? {
     guard !isLinked else { return nil }

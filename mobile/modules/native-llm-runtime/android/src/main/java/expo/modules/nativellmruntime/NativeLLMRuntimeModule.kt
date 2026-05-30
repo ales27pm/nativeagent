@@ -25,7 +25,7 @@ class NativeLLMRuntimeModule : Module() {
         "supportsQuantizedModels" to false,
         "supportedFormats" to emptyList<String>(),
         "loadedModelId" to loadedId,
-        "reasonUnavailable" to "No inference backend linked. Phase 2B will integrate llama.cpp Android or ExecuTorch.",
+        "reasonUnavailable" to "No Android inference backend linked yet. iOS llama.cpp exists; Android backend is planned for a later phase.",
       )
     }
 
@@ -49,12 +49,11 @@ class NativeLLMRuntimeModule : Module() {
         )
       }
 
-      // File exists but no backend linked in Phase 2A
       mapOf(
         "loaded" to false,
         "modelId" to modelId,
         "backend" to "none",
-        "message" to "File validated — no inference backend linked. loadModel activates in Phase 2B.",
+        "message" to "File validated, but Android inference backend is not linked yet.",
       )
     }
 

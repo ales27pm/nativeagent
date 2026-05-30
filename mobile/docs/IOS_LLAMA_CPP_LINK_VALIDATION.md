@@ -1,4 +1,4 @@
-# iOS llama.cpp — Link Validation Guide (Phase 2B.5)
+# iOS llama.cpp — Link Validation Guide (Phase 2B.5 / 2B.6)
 
 Step-by-step validation that the llama.cpp Swift Package is correctly linked, a GGUF model loads, and greedy inference returns real output.
 
@@ -19,19 +19,19 @@ cd mobile
 npx expo prebuild --clean
 ```
 
-This generates `ios/<ProjectName>.xcworkspace` with `NativeLLMRuntime` as a CocoaPod target.
+This generates `ios/nativeagent.xcworkspace` with `NativeLLMRuntime` as a CocoaPod target.
 
-**Expected:** `ios/` directory appears with `.xcworkspace` file.
+**Expected:** `ios/` directory appears with `nativeagent.xcworkspace` file.
 
 ---
 
 ## Step 2 — Open Xcode workspace
 
 ```bash
-open ios/<ProjectName>.xcworkspace
+open ios/nativeagent.xcworkspace
 ```
 
-Open the **`.xcworkspace`** (not `.xcodeproj`). Opening `.xcodeproj` directly skips CocoaPods linking and will produce build failures.
+Open the **`.xcworkspace`** (not `.xcodeproj`). Opening `.xcodeproj` directly skips CocoaPods linking.
 
 ---
 
@@ -58,7 +58,7 @@ npx expo run:ios
 
 Or build and run directly from Xcode (⌘R).
 
-**Expected compile output:** No errors. The `#if canImport(llama)` guard in `LlamaCppBackend.swift` and `LlamaCppModelSession.swift` activates, compiling the real inference code.
+**Expected compile output:** No errors. The `#if canImport(llama)` guard in `LlamaCppBackend.swift`, `LlamaCppModelSession.swift`, and `LlamaCppCApiAdapter.swift` activates, compiling the real inference code path.
 
 ---
 
@@ -74,9 +74,10 @@ GGUF ready        →  linked, no model loaded
 And in RUNTIME HEALTH:
 
 ```
-isLinked   →  true     (green)
-backend    →  llama_cpp  (green)
-available  →  true     (green)
+isLinked          →  true       (green)
+backend           →  llama_cpp  (green)
+available         →  true       (green)
+supportsStreaming  →  false      (expected — Phase 2C)
 ```
 
 If `isLinked` still shows `false` after rebuilding, see Common Compile Errors below.
@@ -85,27 +86,25 @@ If `isLinked` still shows `false` after rebuilding, see Common Compile Errors be
 
 ## Step 6 — Prepare a test GGUF model
 
-### Recommended models for Phase 2B testing
+### Recommended models for testing
 
 | Model | Size | RAM usage | Download |
 |-------|------|-----------|----------|
 | Llama-3.2-1B-Instruct.Q4_K_M.gguf | ~700 MB | ~900 MB | HuggingFace |
 | Phi-3.5-mini-instruct.Q4_K_M.gguf | ~2.2 GB | ~2.8 GB | HuggingFace |
 
-**Use the 1B model for initial validation.** A 3B+ model on a device with < 6 GB RAM may cause the OS to kill the app mid-inference (memory pressure). Start small.
+**Use the 1B model for initial validation.**
 
 ### Simulator: copy via xcrun
 
 ```bash
 # 1. Get the simulator's data container path
-xcrun simctl get_app_container booted <bundle-id> data
+xcrun simctl get_app_container booted app.ales27pm.nativeagent data
 # → prints: /Users/you/Library/Developer/CoreSimulator/Devices/<uuid>/data/Containers/Data/Application/<app-uuid>
 
 # 2. Copy the model
 cp /path/to/model.gguf <data-path>/Documents/
 ```
-
-Replace `<bundle-id>` with your app's bundle ID (found in `app.json` under `ios.bundleIdentifier`).
 
 ### Physical device: Xcode Device Manager
 
@@ -121,24 +120,15 @@ Replace `<bundle-id>` with your app's bundle ID (found in `app.json` under `ios.
 
 In the **DEV TOOLS — MODEL MANAGEMENT** block on the LLM Diagnostics screen:
 
-1. Paste the model's full path into the **MODEL PATH** input, e.g.:
-   ```
-   /var/mobile/Containers/Data/Application/<uuid>/Documents/llama-3.2-1b.Q4_K_M.gguf
-   ```
-   (The simulator path starts with `/Users/…`; a device path starts with `/var/mobile/…`)
-
+1. Paste the model's full path into the **MODEL PATH** input
 2. Tap **LOAD MODEL** → result should show:
    ```
    LOAD SUCCESS
    File validated and model loaded via llama.cpp.
    ```
+3. Tap **SMOKE TEST** — enabled only when `isLinked = true` and a model is loaded.
 
-3. Tap **SMOKE TEST** — the button is enabled only when `isLinked = true` and a model is loaded.
-
-   The smoke prompt is:
-   ```
-   Q: What is 2+2? A:
-   ```
+   Smoke prompt: `"Q: What is 2+2? A:"`
 
 4. Expected result panel:
    ```
@@ -147,7 +137,7 @@ In the **DEV TOOLS — MODEL MANAGEMENT** block on the LLM Diagnostics screen:
    4 tokens · 312ms · llama_cpp
    ```
 
-   The exact text and duration will vary. Any non-empty response from `llama_cpp` backend with `tokensGenerated > 0` is a passing smoke test.
+   Any non-empty response from `llama_cpp` backend with `tokensGenerated > 0` is passing.
 
 ---
 
@@ -158,6 +148,7 @@ In the **DEV TOOLS — MODEL MANAGEMENT** block on the LLM Diagnostics screen:
 | `isLinked` | `true` |
 | `backend` | `llama_cpp` |
 | `available` | `true` |
+| `supportsStreaming` | `false` (Phase 2C) |
 | `loadedModelId` | filename of loaded model |
 | Smoke result `backend` | `llama_cpp` |
 | Smoke result `text` | non-empty string |
@@ -173,31 +164,41 @@ The Swift Package was not added to the **NativeLLMRuntime** target. Check:
 - Xcode Project Navigator → NativeLLMRuntime target → Frameworks & Libraries
 - If `llama` is missing, repeat Step 3 and select the **NativeLLMRuntime** target explicitly
 
+### "use of undeclared identifier 'llama_model_load_from_file'"
+
+Your pinned llama.cpp version uses legacy API names. In NativeLLMRuntime target Build Settings:
+```
+Other Swift Flags → -DLLAMA_CPP_LEGACY_API
+```
+See `docs/LLAMA_CPP_API_COMPATIBILITY.md` for details.
+
+### "use of undeclared identifier 'llama_backend_init'"
+
+Your version removed this call. Add to Other Swift Flags:
+```
+-DLLAMA_CPP_NO_BACKEND_INIT
+```
+
 ### "Cannot find type 'llama_model' in scope"
 
-The C++ interop header isn't bridging. Try:
+C++ interop header isn't bridging. In NativeLLMRuntime target Build Settings:
 ```
-Build Settings → NativeLLMRuntime → Other C++ Flags → -std=c++17
+Other C++ Flags → -std=c++17
 ```
 
-### "Undefined symbol: llama_load_model_from_file"
+### "Undefined symbol: llama_model_load_from_file"
 
-The linker can't find llama.cpp. Clean build folder (⌘⇧K) and rebuild. If persists, check that `llama` is in **Link Binary With Libraries** (not just Frameworks) for the NativeLLMRuntime target.
+Clean build (⌘⇧K) and rebuild. If it persists, verify `llama` appears in **Link Binary With Libraries** for the NativeLLMRuntime target.
 
 ### ARM64 simulator architecture mismatch
 
-If your Mac is Intel-based and you see arch errors in the simulator:
 ```
 Build Settings → NativeLLMRuntime → Excluded Architectures [iphonesimulator] → x86_64
 ```
 
 ### "killed 9" / app crashes during inference
 
-Memory pressure — the model is too large for device RAM. Switch to the 1B Q4_K_M model.
-
-### `llama_load_model_from_file` renamed
-
-llama.cpp evolves its API. If you pin to a post-mid-2025 release and see a compile error on `llama_load_model_from_file`, check for `llama_model_load_from_file` as the new name. The same applies to `llama_new_context_with_model` → `llama_init_from_model` and `llama_free_model` → `llama_model_free`.
+Memory pressure — switch to the 1B Q4_K_M model.
 
 ---
 
@@ -214,9 +215,10 @@ The diagnostics screen shows "Add Swift Package" instructions and the SMOKE TEST
 
 ---
 
-## Phase 2B.5 is complete when
+## Phase 2B.5 / 2B.6 is complete when
 
 1. `isLinked: true` in LLM Diagnostics
 2. LOAD MODEL succeeds with a real `.gguf` file
 3. SMOKE TEST returns a non-empty text from `llama_cpp` backend
-4. TypeScript exits 0 (`npx tsc --noEmit` in `mobile/`)
+4. `supportsStreaming: false` (confirmed — streaming is Phase 2C)
+5. TypeScript exits 0 (`npx tsc --noEmit` in `mobile/`)

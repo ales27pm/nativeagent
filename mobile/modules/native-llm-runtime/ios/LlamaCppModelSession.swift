@@ -4,6 +4,10 @@
 // To enable: add https://github.com/ggml-org/llama.cpp (product: llama) as a
 // Swift Package dependency to the NativeLLMRuntime target in Xcode, then rebuild.
 //
+// All llama.cpp C API calls are routed through LlamaCppCApiAdapter, which
+// handles API version differences (legacy vs current naming) via compile flags.
+// See docs/LLAMA_CPP_API_COMPATIBILITY.md for the full API drift matrix.
+//
 // Nothing in this file is reachable in a standard Vibecode/Expo Go build.
 
 #if canImport(llama)
@@ -18,11 +22,12 @@ final class LlamaCppModelSession {
   private let llamaContext: OpaquePointer  // llama_context *
 
   init(modelId: String, path: String, contextLength: Int) throws {
-    var modelParams = llama_model_default_params()
-    // CPU-only for Phase 2B. Metal/GPU offload added in Phase 2C.
-    modelParams.n_gpu_layers = 0
+    LlamaCppCApiAdapter.ensureBackendInitialized()
 
-    guard let model = llama_load_model_from_file(path, modelParams) else {
+    var modelParams = llama_model_default_params()
+    modelParams.n_gpu_layers = 0  // CPU-only; Metal/GPU offload added in Phase 2C
+
+    guard let model = LlamaCppCApiAdapter.loadModel(path: path, params: modelParams) else {
       throw LlamaCppError.fileNotFound(path: path)
     }
 
@@ -31,8 +36,8 @@ final class LlamaCppModelSession {
     ctxParams.n_batch = 512
     ctxParams.n_ubatch = 512
 
-    guard let ctx = llama_new_context_with_model(model, ctxParams) else {
-      llama_free_model(model)
+    guard let ctx = LlamaCppCApiAdapter.createContext(model: model, params: ctxParams) else {
+      LlamaCppCApiAdapter.freeModel(model)
       throw LlamaCppError.contextInitFailed
     }
 
@@ -43,30 +48,28 @@ final class LlamaCppModelSession {
 
   deinit {
     llama_free(llamaContext)
-    llama_free_model(llamaModel)
+    LlamaCppCApiAdapter.freeModel(llamaModel)
   }
 
   // MARK: - Inference (greedy, Phase 2B — temperature/top-p sampling in Phase 2C)
 
   func generate(request: RunInferenceRequestNative) throws -> RunInferenceResultNative {
     let startTime = Date()
-    let promptBytes = Array(request.prompt.utf8)
-    let bufSize = promptBytes.count + 64
+    let bufSize = request.prompt.utf8.count + 64
     var tokenBuf = [llama_token](repeating: 0, count: bufSize)
 
-    let nPrompt = llama_tokenize(
-      llamaModel,
-      request.prompt,
-      Int32(promptBytes.count),
-      &tokenBuf,
-      Int32(bufSize),
-      true,   // add_bos
-      false   // parse_special
+    let nPrompt = LlamaCppCApiAdapter.tokenize(
+      model: llamaModel,
+      text: request.prompt,
+      addSpecial: true,
+      parseSpecial: false,
+      buffer: &tokenBuf,
+      maxTokens: Int32(bufSize)
     )
     guard nPrompt > 0 else { throw LlamaCppError.tokenizationFailed }
 
     let promptTokens = Array(tokenBuf.prefix(Int(nPrompt)))
-    let eosToken = llama_token_eos(llamaModel)
+    let eosToken = LlamaCppCApiAdapter.eosToken(model: llamaModel)
 
     // Decode the prompt
     var batch = llama_batch_init(max(Int32(promptTokens.count), 512), 0, 1)
@@ -83,7 +86,7 @@ final class LlamaCppModelSession {
     var output: [llama_token] = []
     var nCur = Int32(promptTokens.count)
     let maxNew = max(1, request.maxTokens)
-    let nVocab = Int(llama_n_vocab(llamaModel))
+    let nVocab = LlamaCppCApiAdapter.vocabSize(model: llamaModel)
 
     while output.count < maxNew {
       guard let logits = llama_get_logits(llamaContext) else { break }
@@ -127,7 +130,7 @@ final class LlamaCppModelSession {
     var result = ""
     var buf = [CChar](repeating: 0, count: 256)
     for tok in tokens {
-      let n = llama_token_to_piece(llamaModel, tok, &buf, Int32(buf.count), 0, false)
+      let n = LlamaCppCApiAdapter.tokenToPiece(model: llamaModel, token: tok, buffer: &buf)
       if n > 0 {
         result += String(bytes: buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }, encoding: .utf8) ?? ""
       }
