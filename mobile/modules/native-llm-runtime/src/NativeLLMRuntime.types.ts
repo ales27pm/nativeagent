@@ -13,6 +13,7 @@ export type LLMRuntimeHealth = {
   supportsStreaming: boolean;
   supportsCancellation: boolean;
   supportsQuantizedModels: boolean;
+  supportedFormats: Array<'gguf' | 'mlmodelc' | 'mlpackage' | 'bin' | 'unknown'>;
   loadedModelId: string | null;
   reasonUnavailable: string | null;
 };
@@ -46,9 +47,38 @@ export type UnloadModelResult = {
   message: string;
 };
 
+export type RunInferenceRequest = {
+  modelId: string;
+  prompt: string;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  stopSequences?: string[];
+};
+
+export type RunInferenceResult = {
+  text: string;
+  tokensGenerated: number;
+  tokensSeen: number;
+  backend: LLMRuntimeBackend;
+  modelId: string;
+};
+
+export type LLMRuntimeErrorCode =
+  | 'BACKEND_UNAVAILABLE'
+  | 'MODEL_NOT_LOADED'
+  | 'MODEL_LOAD_FAILED'
+  | 'INFERENCE_NOT_IMPLEMENTED'
+  | 'FILE_NOT_FOUND'
+  | 'INVALID_FORMAT'
+  | 'FILE_NOT_READABLE'
+  | 'RUNTIME_UNAVAILABLE';
+
 export type NativeLLMRuntimeModule = {
   getLLMRuntimeHealth(): Promise<LLMRuntimeHealth>;
   listInstalledModels(): Promise<InstalledLLMModel[]>;
   loadModel(request: LoadModelRequest): Promise<LoadModelResult>;
   unloadModel(modelId: string): Promise<UnloadModelResult>;
+  // runInference is iOS-only in Phase 2B; Android stubs at the TS layer
+  runInference?(request: RunInferenceRequest): Promise<RunInferenceResult>;
 };

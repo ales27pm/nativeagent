@@ -2,34 +2,48 @@ import ExpoModulesCore
 import Foundation
 
 public class NativeLLMRuntimeModule: Module {
-  private var loadedModelId: String? = nil
+  private let backend: any LLMBackend = LlamaCppBackend()
 
   public func definition() -> ModuleDefinition {
     Name("NativeLLMRuntime")
 
-    AsyncFunction("getLLMRuntimeHealth") { () -> [String: Any] in
+    // MARK: - Health
+
+    AsyncFunction("getLLMRuntimeHealth") { [self] () -> [String: Any] in
       var result: [String: Any] = [
-        "available": false,
+        "available": backend.isLinked,
         "platform": "ios",
-        "backend": "none",
-        "supportsStreaming": false,
-        "supportsCancellation": false,
-        "supportsQuantizedModels": false,
-        "reasonUnavailable": "No inference backend linked. Phase 2B will integrate llama.cpp or MLX Swift.",
+        "backend": backend.backendName,
+        "supportsStreaming": backend.supportsStreaming,
+        "supportsCancellation": backend.supportsCancellation,
+        "supportsQuantizedModels": backend.supportsQuantizedModels,
+        "supportedFormats": backend.supportedFormats,
       ]
-      if let modelId = self.loadedModelId {
+
+      if let modelId = backend.currentModelId {
         result["loadedModelId"] = modelId
       } else {
         result["loadedModelId"] = NSNull()
       }
+
+      if let reason = backend.reasonNotLinked() {
+        result["reasonUnavailable"] = reason
+      } else {
+        result["reasonUnavailable"] = NSNull()
+      }
+
       return result
     }
+
+    // MARK: - Model discovery
 
     AsyncFunction("listInstalledModels") { () -> [[String: Any]] in
       return self.scanModelsDirectory()
     }
 
-    AsyncFunction("loadModel") { (request: [String: Any]) -> [String: Any] in
+    // MARK: - Load / unload
+
+    AsyncFunction("loadModel") { [self] (request: [String: Any]) -> [String: Any] in
       guard let modelId = request["modelId"] as? String,
             let localPath = request["localPath"] as? String
       else {
@@ -40,34 +54,82 @@ public class NativeLLMRuntimeModule: Module {
         )
       }
 
-      guard FileManager.default.fileExists(atPath: localPath) else {
+      let ctxLen = (request["contextLength"] as? Int) ?? 2048
+      let nativeReq = LoadModelRequestNative(
+        modelId: modelId,
+        localPath: localPath,
+        preferredBackend: request["preferredBackend"] as? String,
+        contextLength: ctxLen
+      )
+
+      do {
+        let result = try await backend.loadModel(request: nativeReq)
         return [
-          "loaded": false,
-          "modelId": modelId,
-          "backend": "none",
-          "message": "File not found at path: \(localPath)",
+          "loaded": result.loaded,
+          "modelId": result.modelId,
+          "backend": result.backend,
+          "message": result.message,
         ]
+      } catch let e as LlamaCppError {
+        throw NSError(
+          domain: "NativeLLMRuntime.LlamaCpp",
+          code: 1,
+          userInfo: [NSLocalizedDescriptionKey: e.errorDescription ?? e.localizedDescription]
+        )
+      }
+    }
+
+    AsyncFunction("unloadModel") { [self] (modelId: String) -> [String: Any] in
+      let result = await backend.unloadModel(modelId: modelId)
+      return [
+        "unloaded": result.unloaded,
+        "modelId": result.modelId,
+        "message": result.message,
+      ]
+    }
+
+    // MARK: - Inference (iOS-only in Phase 2B; Android stubs this at the TS layer)
+
+    AsyncFunction("runInference") { [self] (request: [String: Any]) -> [String: Any] in
+      guard let modelId = request["modelId"] as? String,
+            let prompt = request["prompt"] as? String
+      else {
+        throw NSError(
+          domain: "NativeLLMRuntime",
+          code: 400,
+          userInfo: [NSLocalizedDescriptionKey: "modelId and prompt are required"]
+        )
       }
 
-      // File exists but no backend is linked in Phase 2A
-      return [
-        "loaded": false,
-        "modelId": modelId,
-        "backend": "none",
-        "message": "File validated — no inference backend linked. loadModel activates in Phase 2B.",
-      ]
-    }
+      let nativeReq = RunInferenceRequestNative(
+        modelId: modelId,
+        prompt: prompt,
+        maxTokens: (request["maxTokens"] as? Int) ?? 256,
+        temperature: (request["temperature"] as? Float) ?? 0.8,
+        topP: (request["topP"] as? Float) ?? 0.95,
+        stopSequences: (request["stopSequences"] as? [String]) ?? []
+      )
 
-    AsyncFunction("unloadModel") { (modelId: String) -> [String: Any] in
-      let wasLoaded = self.loadedModelId == modelId
-      self.loadedModelId = nil
-      return [
-        "unloaded": wasLoaded,
-        "modelId": modelId,
-        "message": wasLoaded ? "Model state cleared." : "No model was loaded with that ID.",
-      ]
+      do {
+        let result = try await backend.runInference(request: nativeReq)
+        return [
+          "text": result.text,
+          "tokensGenerated": result.tokensGenerated,
+          "tokensSeen": result.tokensSeen,
+          "backend": result.backend,
+          "modelId": result.modelId,
+        ]
+      } catch let e as LlamaCppError {
+        throw NSError(
+          domain: "NativeLLMRuntime.LlamaCpp",
+          code: 2,
+          userInfo: [NSLocalizedDescriptionKey: e.errorDescription ?? e.localizedDescription]
+        )
+      }
     }
   }
+
+  // MARK: - Model file scanning
 
   private func scanModelsDirectory() -> [[String: Any]] {
     let fileManager = FileManager.default

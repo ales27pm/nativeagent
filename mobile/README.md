@@ -54,6 +54,43 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 11. LLM diagnostics screen at `/llm-diagnostics`
 12. `docs/NATIVE_LLM_RUNTIME_CONTRACT.md`
 
+## What Phase 2B ships
+
+1. **`LLMBackend` protocol** — Swift abstraction for swappable inference backends
+2. **`LlamaCppBackend.swift`** — concrete llama.cpp backend, all real code guarded by `#if canImport(llama)`
+3. **`LlamaCppModelSession.swift`** — owns `llama_model*` + `llama_context*`, greedy sampling loop
+4. **`LlamaCppError.swift`** — typed error enum for every llama.cpp failure mode
+5. **Rewritten `NativeLLMRuntimeModule.swift`** — routes all calls through the backend protocol
+6. **Real `loadModel` validation**: file exists → readable → `.gguf` extension → size > 0 bytes
+7. **Real `loadModel` execution** (iOS + llama.cpp linked): `llama_load_model_from_file` + context init
+8. **Real `runInference`** (iOS + llama.cpp linked): greedy token-sampling loop via llama.cpp C API
+9. New TypeScript types: `RunInferenceRequest`, `RunInferenceResult`, `LLMRuntimeErrorCode`
+10. New TypeScript error classes: `BackendUnavailableError`, `ModelNotLoadedError`, `ModelLoadFailedError`, `LLMInferenceNotImplementedError`
+11. Updated `LLMRuntimeHealth` type with `supportedFormats` field
+12. Updated LLM diagnostics screen: shows backend linked status, supported formats, inference readiness, linking instructions
+13. `docs/IOS_LLAMA_CPP_BACKEND.md` — step-by-step llama.cpp linking guide
+
+### Current backend status
+
+| Platform | Backend | Status |
+|----------|---------|--------|
+| iOS (dev build + llama.cpp Package linked) | `llama_cpp` | Real inference available |
+| iOS (dev build, no llama.cpp Package) | `none` | File validation works; inference throws `BackendUnavailableError` |
+| iOS (Expo Go / sandbox) | `none` | All native calls throw `NativeLLMRuntimeUnavailableError` |
+| Android | `none` | File validation works; inference throws `LLMInferenceNotImplementedError` |
+
+### How to test with a real GGUF file (iOS)
+
+1. Run `npx expo prebuild --clean && npx expo run:ios`
+2. In Xcode: **File → Add Package Dependencies → `https://github.com/ggml-org/llama.cpp`**, product **llama**, target **NativeLLMRuntime**
+3. Rebuild: `npx expo run:ios`
+4. Download a small GGUF model (e.g. `Llama-3.2-1B-Instruct.Q4_K_M.gguf`) and copy to the simulator's Documents folder
+5. Open the LLM Diagnostics screen — `backend: llama_cpp`, `available: true`
+6. Call `loadModel({ modelId, localPath })` — returns `loaded: true`
+7. Call `runInference({ modelId, prompt })` — returns real generated text
+
+Full step-by-step: `docs/IOS_LLAMA_CPP_BACKEND.md`
+
 ### Why `runInference` is forbidden in Phase 2A
 
 Returning fake generated text — even as a placeholder — would:

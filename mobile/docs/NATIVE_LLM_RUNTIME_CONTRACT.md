@@ -1,23 +1,39 @@
-# NativeLLMRuntime — Phase 2A Contract
+# NativeLLMRuntime — Contract (Phase 2A + 2B)
 
-API contract, native lifecycle, unavailable states, and backend decision matrix for `native-llm-runtime`.
+API contract, native lifecycle, unavailable states, error codes, and backend decision matrix for `native-llm-runtime`.
 
 ---
 
 ## Phase scope
 
-**Phase 2A** establishes:
+**Phase 2A** established:
 - The TypeScript API surface (all function signatures and types)
 - The native module skeleton (iOS Swift + Android Kotlin)
 - Real model file scanning (Documents / app files directory)
 - Typed unavailable and backend-not-linked return states
 - The LLM diagnostics screen
 
-**Phase 2A does NOT include:**
-- Any inference engine (no llama.cpp, no MLX, no ExecuTorch)
-- Real model loading (loadModel validates file existence, returns backend-not-linked)
-- Streaming, cancellation, context management
-- `runInference` — it throws `LLMInferenceNotImplementedError` at all times
+**Phase 2B adds:**
+- `LLMBackend` Swift protocol — abstraction for swappable inference backends
+- `LlamaCppBackend` — concrete backend, real llama.cpp integration (guarded by `#if canImport(llama)`)
+- `LlamaCppModelSession` — owns `llama_model*` + `llama_context*`, runs greedy sampling loop
+- `LlamaCppError` — typed error enum covering all failure modes
+- Updated `NativeLLMRuntimeModule` — routes all calls through the backend abstraction
+- Real `loadModel` validation: file exists, readable, `.gguf` extension, size > 0
+- Real `loadModel` execution: `llama_load_model_from_file` when llama.cpp IS linked
+- Real `runInference`: greedy token sampling loop via `llama_decode` + `llama_get_logits`
+- `runInference` on iOS without llama.cpp: throws `BackendUnavailableError`
+- `runInference` on Android: throws `LLMInferenceNotImplementedError` (Phase 2C)
+- New TypeScript types: `RunInferenceRequest`, `RunInferenceResult`, `LLMRuntimeErrorCode`
+- New TypeScript error classes: `BackendUnavailableError`, `ModelNotLoadedError`, `ModelLoadFailedError`
+- `supportedFormats` field added to `LLMRuntimeHealth`
+
+**Phase 2B does NOT include:**
+- Temperature / top-P / top-K sampling (Phase 2C)
+- Streaming token output (Phase 2C)
+- Cancellation (Phase 2C)
+- Android inference backend (Phase 2C)
+- MLX Swift backend (Phase 2C)
 
 ---
 
@@ -61,6 +77,7 @@ type LLMRuntimeHealth = {
   supportsStreaming: boolean;
   supportsCancellation: boolean;
   supportsQuantizedModels: boolean;
+  supportedFormats: Array<'gguf' | 'mlmodelc' | 'mlpackage' | 'bin' | 'unknown'>;
   loadedModelId: string | null;
   reasonUnavailable: string | null;
 };
@@ -82,11 +99,39 @@ type LoadModelRequest = {
 };
 
 type LoadModelResult = {
-  loaded: boolean;         // always false in Phase 2A
+  loaded: boolean;         // true only when llama.cpp is linked and file loads successfully
   modelId: string;
   backend: LLMRuntimeBackend;
   message: string;
 };
+
+// Phase 2B additions
+type RunInferenceRequest = {
+  modelId: string;
+  prompt: string;
+  maxTokens?: number;      // default 256
+  temperature?: number;    // Phase 2C (greedy only in 2B)
+  topP?: number;           // Phase 2C
+  stopSequences?: string[];
+};
+
+type RunInferenceResult = {
+  text: string;            // real token output — never fake
+  tokensGenerated: number;
+  tokensSeen: number;
+  backend: LLMRuntimeBackend;
+  modelId: string;
+};
+
+type LLMRuntimeErrorCode =
+  | 'BACKEND_UNAVAILABLE'
+  | 'MODEL_NOT_LOADED'
+  | 'MODEL_LOAD_FAILED'
+  | 'INFERENCE_NOT_IMPLEMENTED'
+  | 'FILE_NOT_FOUND'
+  | 'INVALID_FORMAT'
+  | 'FILE_NOT_READABLE'
+  | 'RUNTIME_UNAVAILABLE';
 
 type UnloadModelResult = {
   unloaded: boolean;
@@ -94,6 +139,34 @@ type UnloadModelResult = {
   message: string;
 };
 ```
+
+---
+
+## Error types
+
+```typescript
+class NativeLLMRuntimeUnavailableError  // code: 'RUNTIME_UNAVAILABLE'
+class BackendUnavailableError           // code: 'BACKEND_UNAVAILABLE' — module linked but backend not
+class ModelNotLoadedError               // code: 'MODEL_NOT_LOADED'
+class ModelLoadFailedError              // code: 'MODEL_LOAD_FAILED'
+class LLMInferenceNotImplementedError   // code: 'INFERENCE_NOT_IMPLEMENTED'
+```
+
+---
+
+## runInference contract
+
+`runInference(request)` call path:
+
+| State | Throws |
+|-------|--------|
+| Sandbox / Expo Go (native module null) | `NativeLLMRuntimeUnavailableError` |
+| Dev build, `runInference` not in native module (Android) | `LLMInferenceNotImplementedError` |
+| Dev build iOS, llama.cpp not linked | `BackendUnavailableError` (from native) |
+| Dev build iOS, llama.cpp linked, no model loaded | `ModelNotLoadedError` (from native) |
+| Dev build iOS, llama.cpp linked, model loaded | Returns `RunInferenceResult` with real token output |
+
+**No fake output is ever returned.** Any non-null `text` in `RunInferenceResult` comes from a real llama.cpp token-sampling loop.
 
 ---
 

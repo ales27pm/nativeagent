@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useLLMRuntimeHealth } from '@/features/llm/useLLMRuntimeHealth';
 import { colors } from '@/theme/colors';
@@ -16,6 +16,9 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
   const { health, installedModels, nativeAvailable, error, refresh, status } =
     useLLMRuntimeHealth();
 
+  const backendLinked = health?.backend !== 'none' && health?.backend !== undefined;
+  const isIOS = Platform.OS === 'ios';
+
   return (
     <ScrollView
       style={styles.scroll}
@@ -24,12 +27,15 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
       testID="llm-diagnostics-screen"
     >
       {/* Phase notice */}
-      <View style={styles.phaseNotice}>
-        <Text style={styles.phaseTag}>PHASE 2A</Text>
+      <View style={styles.phaseNotice} testID="llm-phase-notice">
+        <Text style={styles.phaseTag}>PHASE 2B — iOS LLAMA.CPP BACKEND</Text>
         <Text style={styles.phaseText}>
-          {'Contract + lifecycle layer only. No inference backend is linked.\n' +
-            'Phase 2B will integrate llama.cpp or MLX Swift (iOS) and\n' +
-            'llama.cpp Android or ExecuTorch (Android).'}
+          {isIOS
+            ? 'iOS: llama.cpp backend adapter is linked. ' +
+              'Add the Swift Package to activate real inference.\n' +
+              'Android: inference backend not integrated (Phase 2C).'
+            : 'Android: inference backend not integrated in Phase 2B.\n' +
+              'iOS llama.cpp backend will be available in a dev build.'}
         </Text>
       </View>
 
@@ -53,8 +59,8 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
             <DataRow
               label="backend"
               value={health.backend}
-              highlight={health.backend !== 'none'}
-              danger={health.backend === 'none'}
+              highlight={backendLinked}
+              danger={!backendLinked}
             />
             <DataRow
               label="supportsStreaming"
@@ -72,6 +78,15 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
               highlight={health.supportsQuantizedModels}
             />
             <DataRow
+              label="supportedFormats"
+              value={
+                health.supportedFormats.length > 0
+                  ? health.supportedFormats.join(', ')
+                  : 'none'
+              }
+              highlight={health.supportedFormats.length > 0}
+            />
+            <DataRow
               label="loadedModelId"
               value={health.loadedModelId ?? 'null'}
               highlight={health.loadedModelId !== null}
@@ -87,11 +102,60 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
             ) : null}
           </>
         ) : (
-          <Text style={styles.empty}>
+          <Text style={styles.empty} testID="llm-health-loading">
             {status === 'loading' ? 'loading…' : 'no health data'}
           </Text>
         )}
       </Block>
+
+      {/* Backend status by platform */}
+      <Block label="BACKEND STATUS">
+        <DataRow
+          label="iOS llama.cpp"
+          value={
+            isIOS
+              ? backendLinked
+                ? 'linked ✓'
+                : 'not linked — add Swift Package'
+              : 'n/a (android)'
+          }
+          highlight={isIOS ? backendLinked : false}
+          danger={isIOS ? !backendLinked : false}
+        />
+        <DataRow
+          label="Android backend"
+          value="none — Phase 2C"
+          danger={Platform.OS === 'android'}
+          last
+        />
+      </Block>
+
+      {/* Linking instructions when backend is not linked on iOS */}
+      {isIOS && !backendLinked ? (
+        <Block label="TO ACTIVATE llama.cpp ON iOS">
+          <View style={styles.codeBlock}>
+            <Text style={styles.codeLine} selectable>
+              {'# 1. Add Swift Package in Xcode:'}
+            </Text>
+            <Text style={styles.codeLine} selectable>
+              {'#    https://github.com/ggml-org/llama.cpp'}
+            </Text>
+            <Text style={styles.codeLine} selectable>
+              {'#    Product: llama → NativeLLMRuntime target'}
+            </Text>
+            <Text style={styles.codeLine} selectable>{'# 2. Rebuild:'}</Text>
+            <Text style={styles.codeLine} selectable>
+              {'npx expo prebuild --clean'}
+            </Text>
+            <Text style={styles.codeLine} selectable>
+              {'npx expo run:ios'}
+            </Text>
+            <Text style={styles.codeLine} selectable>
+              {'# 3. Place a .gguf model in Documents/'}
+            </Text>
+          </View>
+        </Block>
+      ) : null}
 
       {/* Installed models */}
       <Block label="INSTALLED MODELS">
@@ -111,7 +175,11 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
                 <MetaChip label={model.format} />
                 <MetaChip label={formatBytes(model.sizeBytes)} />
               </View>
-              <Text style={styles.modelPath} numberOfLines={1} ellipsizeMode="middle">
+              <Text
+                style={styles.modelPath}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+              >
                 {model.localPath}
               </Text>
               {i < installedModels.length - 1 ? (
@@ -134,23 +202,33 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
       <Block label="INFERENCE STATUS">
         <DataRow
           label="runInference"
-          value="not implemented"
-          danger
+          value={
+            backendLinked && health?.loadedModelId !== null
+              ? 'ready (llama.cpp + model loaded)'
+              : backendLinked
+                ? 'load a model first'
+                : 'backend not linked'
+          }
+          highlight={backendLinked ? health?.loadedModelId !== null : false}
+          danger={!backendLinked}
         />
         <DataRow
-          label="phase"
-          value="2B — backend integration pending"
+          label="streaming"
+          value="Phase 2C (greedy only in 2B)"
+        />
+        <DataRow
+          label="cancellation"
+          value="Phase 2C"
           last
         />
       </Block>
 
-      {/* Backend options */}
-      <Block label="NEXT BACKEND OPTIONS">
-        <DataRow label="iOS option A" value="llama.cpp (gguf, GGML)" />
-        <DataRow label="iOS option B" value="MLX Swift (Apple Silicon)" />
-        <DataRow label="Android option A" value="llama.cpp Android" />
-        <DataRow label="Android option B" value="ExecuTorch (Meta)" />
-        <DataRow label="Android option C" value="MediaPipe LLM Inference" last />
+      {/* Next backend options */}
+      <Block label="BACKEND ROADMAP">
+        <DataRow label="iOS (current)" value="llama.cpp (GGUF)" highlight={isIOS} />
+        <DataRow label="iOS (next)" value="MLX Swift (Apple Silicon)" />
+        <DataRow label="Android (next)" value="llama.cpp JNI — Phase 2C" />
+        <DataRow label="Android (alt)" value="ExecuTorch / MediaPipe" last />
       </Block>
 
       {error !== null ? (
@@ -169,6 +247,10 @@ export default function LLMDiagnosticsScreen(): React.JSX.Element {
     </ScrollView>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 function Block({
   label,
@@ -230,6 +312,10 @@ function MetaChip({ label }: { label: string }): React.JSX.Element {
     </View>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.bg },
@@ -315,6 +401,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     padding: spacing.lg,
   },
+  codeBlock: {
+    backgroundColor: colors.surfaceUp,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: 2,
+  },
+  codeLine: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.amberBright,
+    lineHeight: 20,
+  },
   modelCard: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -325,10 +423,7 @@ const styles = StyleSheet.create({
     fontSize: sizes.sm,
     color: colors.text,
   },
-  modelMeta: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
+  modelMeta: { flexDirection: 'row', gap: spacing.xs },
   chip: {
     backgroundColor: colors.surfaceUp,
     borderColor: colors.border,
