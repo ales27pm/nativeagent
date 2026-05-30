@@ -1,4 +1,6 @@
-import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+
+import { useRouter } from 'expo-router';
 
 import { ErrorPanel } from '@/components/ErrorPanel';
 import { getBridgeHealth } from '@/lib/bridgeHealth';
@@ -27,6 +29,7 @@ function formatBytes(bytes: number): string {
 }
 
 export default function DiagnosticsScreen(): React.JSX.Element {
+  const router = useRouter();
   const { snapshot, error, refresh } = useRuntimeSnapshot();
   const health = getBridgeHealth();
   const arch = detectNewArchitecture();
@@ -156,6 +159,16 @@ export default function DiagnosticsScreen(): React.JSX.Element {
       </Block>
 
       {error !== null ? <ErrorPanel error={error} onRetry={refresh} /> : null}
+
+      {/* Navigate to LLM diagnostics */}
+      <Pressable
+        onPress={() => router.push('/llm-diagnostics')}
+        style={styles.navButton}
+        testID="nav-llm-diagnostics"
+      >
+        <Text style={styles.navButtonLabel}>LLM RUNTIME</Text>
+        <Text style={styles.navButtonArrow}>{'▶'}</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -312,5 +325,27 @@ const styles = StyleSheet.create({
     fontSize: sizes.sm,
     color: colors.textMuted,
     padding: spacing.lg,
+  },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  navButtonLabel: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.sm,
+    color: colors.amber,
+    letterSpacing: tracking.wider,
+  },
+  navButtonArrow: {
+    fontFamily: fonts.mono,
+    fontSize: sizes.xs,
+    color: colors.amberDim,
   },
 });

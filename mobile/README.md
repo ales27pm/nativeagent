@@ -2,9 +2,9 @@
 
 > Expo + React Native New Architecture + Native Runtime
 
-NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** does not ship an LLM. It establishes the real native runtime bridge that future on-device AI features will depend on.
+NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation — without inference.
 
-This project is **not** an Expo Go app. It uses a local Expo Module written in **Swift** (iOS) and **Kotlin** (Android), which requires a development build.
+This project is **not** an Expo Go app. It uses local Expo Modules written in **Swift** (iOS) and **Kotlin** (Android), which require a development build.
 
 ---
 
@@ -30,6 +30,49 @@ This project is **not** an Expo Go app. It uses a local Expo Module written in *
 5. A home screen that calls the native module and renders the runtime snapshot
 6. A diagnostics screen with bridge status, environment, and architecture detection
 7. Robust loading / error / success UI states with retry
+
+## What Phase 1.5 ships
+
+1. `getBridgeHealth()` — synchronous detection of bridge/runtime state
+2. `validateSnapshot()` / `assertValidSnapshot()` — shape validation for `NativeRuntimeSnapshot`
+3. Improved diagnostics screen: bridge health layer, NEXT STEP command block, shape validation section
+4. `docs/LOCAL_NATIVE_BUILD_CHECKLIST.md` — step-by-step build guide
+5. `docs/NATIVE_MODULE_TROUBLESHOOTING.md` — troubleshooting reference
+
+## What Phase 2A ships
+
+1. A second local Expo module: **`native-llm-runtime`**
+2. Full TypeScript type contract: `LLMRuntimeHealth`, `InstalledLLMModel`, `LoadModelRequest`, `LoadModelResult`, `UnloadModelResult`
+3. iOS Swift skeleton: real model file scanning, file validation, honest unavailable returns
+4. Android Kotlin skeleton: same contract, real model file scanning
+5. `getLLMRuntimeHealth()` — returns honest platform health with `backend: 'none'` and a clear `reasonUnavailable` message
+6. `listInstalledModels()` — scans the app's Documents directory for `.gguf`, `.bin`, `.mlmodelc`, `.mlpackage` files
+7. `loadModel()` — validates file existence, returns `loaded: false` with typed message (no backend linked)
+8. `unloadModel()` — clears internal state
+9. `runInference()` — always throws `LLMInferenceNotImplementedError` (see below)
+10. `useLLMRuntimeHealth` hook
+11. LLM diagnostics screen at `/llm-diagnostics`
+12. `docs/NATIVE_LLM_RUNTIME_CONTRACT.md`
+
+### Why `runInference` is forbidden in Phase 2A
+
+Returning fake generated text — even as a placeholder — would:
+- Let tests pass against output that doesn't come from a real model
+- Create developer confusion about what is actually working
+- Violate user trust if ever shown in a real session
+
+`runInference` throws `LLMInferenceNotImplementedError` unconditionally until Phase 2B integrates a real inference backend.
+
+### Phase 2B plan
+
+**iOS options:**
+- `llama.cpp` via Swift wrapper — widest GGUF model compatibility
+- MLX Swift — fastest on Apple Silicon (M-series) devices
+
+**Android options:**
+- `llama.cpp` Android JNI — same `.gguf` model files as iOS
+- ExecuTorch (Meta) — Llama family, `.pte` format
+- MediaPipe LLM Inference — easiest Android integration, `.bin`/`.task` format
 
 ---
 
@@ -85,34 +128,59 @@ mobile/
 │   ├── app/                       # Expo Router routes
 │   │   ├── _layout.tsx
 │   │   ├── index.tsx              # Home: NativeAgent
-│   │   └── diagnostics.tsx        # Diagnostics
+│   │   ├── diagnostics.tsx        # Device runtime diagnostics
+│   │   └── llm-diagnostics.tsx    # LLM runtime diagnostics (Phase 2A)
 │   ├── components/
 │   │   ├── RuntimeCard.tsx
 │   │   └── ErrorPanel.tsx
 │   ├── features/
-│   │   └── runtime/
-│   │       ├── runtimeTypes.ts
-│   │       └── useRuntimeSnapshot.ts
+│   │   ├── runtime/
+│   │   │   ├── runtimeTypes.ts
+│   │   │   ├── snapshotValidator.ts
+│   │   │   └── useRuntimeSnapshot.ts
+│   │   └── llm/
+│   │       └── useLLMRuntimeHealth.ts
+│   ├── lib/
+│   │   └── bridgeHealth.ts
 │   └── theme/
 │       ├── colors.ts
 │       ├── spacing.ts
 │       └── typography.ts
-└── modules/
-    └── native-device-runtime/
-        ├── expo-module.config.json
-        ├── package.json
-        ├── src/
-        │   ├── index.ts                          # TS API + types
-        │   └── NativeDeviceRuntime.types.ts
-        ├── ios/
-        │   ├── NativeDeviceRuntime.podspec
-        │   └── NativeDeviceRuntimeModule.swift
-        └── android/
-            ├── build.gradle
-            └── src/main/
-                ├── AndroidManifest.xml
-                └── java/expo/modules/nativedeviceruntime/
-                    └── NativeDeviceRuntimeModule.kt
+├── modules/
+│   ├── native-device-runtime/     # Phase 1: device/runtime snapshot
+│   │   ├── expo-module.config.json
+│   │   ├── package.json
+│   │   ├── src/
+│   │   │   ├── index.ts
+│   │   │   └── NativeDeviceRuntime.types.ts
+│   │   ├── ios/
+│   │   │   ├── NativeDeviceRuntime.podspec
+│   │   │   └── NativeDeviceRuntimeModule.swift
+│   │   └── android/
+│   │       ├── build.gradle
+│   │       └── src/main/
+│   │           ├── AndroidManifest.xml
+│   │           └── java/expo/modules/nativedeviceruntime/
+│   │               └── NativeDeviceRuntimeModule.kt
+│   └── native-llm-runtime/        # Phase 2A: LLM lifecycle contract
+│       ├── expo-module.config.json
+│       ├── package.json
+│       ├── src/
+│       │   ├── index.ts
+│       │   └── NativeLLMRuntime.types.ts
+│       ├── ios/
+│       │   ├── NativeLLMRuntime.podspec
+│       │   └── NativeLLMRuntimeModule.swift
+│       └── android/
+│           ├── build.gradle
+│           └── src/main/
+│               ├── AndroidManifest.xml
+│               └── java/expo/modules/nativellmruntime/
+│                   └── NativeLLMRuntimeModule.kt
+└── docs/
+    ├── LOCAL_NATIVE_BUILD_CHECKLIST.md
+    ├── NATIVE_MODULE_TROUBLESHOOTING.md
+    └── NATIVE_LLM_RUNTIME_CONTRACT.md
 ```
 
 ---
@@ -176,7 +244,7 @@ The Expo autolinker scans `modules/` at the project root automatically when preb
 
 The runtime bridge in Phase 1 exists to anchor the following future modules:
 
-- **NativeLLMRuntime** — on-device LLM inference (e.g., MLX on iOS, MediaPipe / ExecuTorch on Android)
+- **NativeLLMRuntime** ✓ Phase 2A contract complete — inference in Phase 2B
 - **NativeEmbeddingRuntime** — fast vector embedding generation on-device
 - **NativeTokenizerRuntime** — sentence-piece / BPE tokenization native pass-through
 - **NativeAudioRuntime** — low-latency audio capture and VAD for voice agents

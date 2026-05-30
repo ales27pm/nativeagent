@@ -38,6 +38,7 @@ function RootLayoutNav(): React.JSX.Element {
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="diagnostics" options={{ title: 'DIAGNOSTICS' }} />
+        <Stack.Screen name="llm-diagnostics" options={{ title: 'LLM RUNTIME' }} />
       </Stack>
     </View>
   );

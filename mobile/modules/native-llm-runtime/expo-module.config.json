@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["NativeLLMRuntimeModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.nativellmruntime.NativeLLMRuntimeModule"]
+  }
+}
