@@ -1,4 +1,4 @@
-# iOS llama.cpp Backend — Phase 2B / 2B.7
+# iOS llama.cpp Backend — Phase 2B / 2B.8
 
 Implementation guide for the llama.cpp inference backend on iOS.
 
@@ -220,6 +220,16 @@ Very new llama.cpp builds (b4700+) removed `llama_backend_init()`. If you see "u
 ```
 Other Swift Flags → -DLLAMA_CPP_NO_BACKEND_INIT
 ```
+
+---
+
+## Inference context isolation (Phase 2B.8)
+
+Each `runInference` call creates a fresh `llama_context` and frees it when the call returns. The `llama_model` stays loaded across multiple calls — only the context is recreated.
+
+**Why:** `llama_kv_cache_clear()` (the previous approach) varies in availability across llama.cpp package releases; calling it risked a compile error. Creating a fresh context is always safe and always produces clean state.
+
+**Tradeoff:** Context creation adds latency per inference call. For Phase 2B smoke testing this is acceptable. Phase 2C may re-introduce context reuse once a stable memory-reset strategy is confirmed against the linked package version.
 
 ---
 

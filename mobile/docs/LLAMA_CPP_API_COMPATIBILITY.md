@@ -126,9 +126,31 @@ Phase 2B.7 added these changes to the adapter:
 - `tokenize` and `tokenToPiece` now use `withUnsafeMutableBufferPointer` for safe C array interop
 - Both methods `throws` — vocab unavailability surfaces as `LlamaCppError.vocabUnavailable`
 - `vocabSize` and `eosToken` now `throws` — empty vocabulary surfaces as `LlamaCppError.emptyVocabulary`
-- `clearKVCache(_:)` added — wraps `llama_kv_cache_clear` for the session to call before each inference
 
-These changes do not affect the compile flag interface. `-DLLAMA_CPP_LEGACY_API` and `-DLLAMA_CPP_NO_BACKEND_INIT` work the same as before.
+These changes do not affect the compile flag interface.
+
+## KV state strategy (Phase 2B.8)
+
+Phase 2B.7 originally called `llama_kv_cache_clear(ctx)` before each inference. This was removed in Phase 2B.8 because:
+- `llama_kv_cache_clear` availability varies across llama.cpp Swift Package releases
+- Calling it against an unknown package version risks a compile error
+
+The replacement strategy: `LlamaCppModelSession` creates a fresh `llama_context` per `runInference` call and frees it in `defer`. The model stays loaded. This achieves clean state without any KV-clear API dependency.
+
+If your project requires KV cache reuse for performance (e.g. multi-turn context), you can re-introduce `llama_kv_cache_clear` behind a compile flag:
+
+```swift
+// In LlamaCppCApiAdapter.swift — add only if confirmed available in your package version:
+#if LLAMA_CPP_KV_CLEAR_AVAILABLE
+static func clearKVCache(_ ctx: OpaquePointer) {
+  llama_kv_cache_clear(ctx)
+}
+#endif
+```
+
+Then add `-DLLAMA_CPP_KV_CLEAR_AVAILABLE` to Other Swift Flags after verifying the symbol exists in your pinned package version. See `llama.h` in the Swift Package sources to confirm.
+
+`-DLLAMA_CPP_LEGACY_API` and `-DLLAMA_CPP_NO_BACKEND_INIT` work the same as before.
 
 ---
 

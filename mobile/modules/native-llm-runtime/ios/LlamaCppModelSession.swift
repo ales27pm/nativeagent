@@ -8,18 +8,27 @@
 // handles API version differences (legacy vs current naming) via compile flags.
 // See docs/LLAMA_CPP_API_COMPATIBILITY.md for the full API drift matrix.
 //
+// Context isolation strategy (Phase 2B.8):
+// Rather than calling llama_kv_cache_clear (whose availability varies across
+// llama.cpp releases), the session keeps the llama_model* alive and creates a
+// fresh llama_context for each runInference call. The context is freed in defer
+// at the end of generate(). This is slower than reusing a context, but it is
+// compile-stable and guarantees no stale KV state across repeated inferences.
+//
 // Nothing in this file is reachable in a standard Vibecode/Expo Go build.
 
 #if canImport(llama)
 import llama
 import Foundation
 
-/// Holds a live llama_model* and llama_context* for a single loaded model.
-/// Owns both pointers and frees them on deinit.
+/// Holds a live llama_model* for a single loaded model.
+///
+/// Owns the model pointer and frees it on deinit.
+/// Each call to generate() creates and frees a temporary llama_context.
 final class LlamaCppModelSession {
   let modelId: String
-  private let llamaModel: OpaquePointer  // llama_model *
-  private let llamaContext: OpaquePointer  // llama_context *
+  private let llamaModel: OpaquePointer  // llama_model * — lives for the session lifetime
+  private let contextLength: Int          // stored for per-inference context creation
 
   // Cached at init to fail-fast on vocab problems and avoid redundant calls per inference.
   private let cachedVocabSize: Int
@@ -39,34 +48,33 @@ final class LlamaCppModelSession {
       throw LlamaCppError.fileNotFound(path: path)
     }
 
-    // Validate vocab before context creation — fail early with a clear error.
-    let vocabSize = try LlamaCppCApiAdapter.vocabSize(model: model)
-    let eosToken = try LlamaCppCApiAdapter.eosToken(model: model)
-
-    var ctxParams = llama_context_default_params()
-    ctxParams.n_ctx = UInt32(max(512, min(contextLength, 4096)))
-    ctxParams.n_batch = 512
-    ctxParams.n_ubatch = 512
-
-    guard let ctx = LlamaCppCApiAdapter.createContext(model: model, params: ctxParams) else {
+    // Validate vocab before storing — fail early with a clear error.
+    do {
+      let vocabSize = try LlamaCppCApiAdapter.vocabSize(model: model)
+      let eosToken = try LlamaCppCApiAdapter.eosToken(model: model)
+      self.cachedVocabSize = vocabSize
+      self.cachedEosToken = eosToken
+    } catch {
       LlamaCppCApiAdapter.freeModel(model)
-      throw LlamaCppError.contextInitFailed
+      throw error
     }
 
     self.modelId = modelId
     self.llamaModel = model
-    self.llamaContext = ctx
-    self.cachedVocabSize = vocabSize
-    self.cachedEosToken = eosToken
+    self.contextLength = max(512, min(contextLength, 4096))
   }
 
   deinit {
-    llama_free(llamaContext)
     LlamaCppCApiAdapter.freeModel(llamaModel)
   }
 
   // MARK: - Inference (greedy, Phase 2B — temperature/top-p sampling in Phase 2C)
 
+  /// Run greedy inference on a fresh context.
+  ///
+  /// A new llama_context is created at the start of each call and freed in defer.
+  /// This eliminates stale KV state without relying on llama_kv_cache_clear,
+  /// which may not be available in all llama.cpp package versions.
   func generate(request: RunInferenceRequestNative) throws -> RunInferenceResultNative {
     // Serialization guard: reject if an inference call is already in progress.
     guard inferenceLock.try() else { throw LlamaCppError.inferenceBusy }
@@ -74,8 +82,17 @@ final class LlamaCppModelSession {
 
     let startTime = Date()
 
-    // Clear KV cache before every inference to prevent stale state from a prior call.
-    LlamaCppCApiAdapter.clearKVCache(llamaContext)
+    // Create a fresh context for this inference call.
+    var ctxParams = llama_context_default_params()
+    ctxParams.n_ctx = UInt32(contextLength)
+    ctxParams.n_batch = 512
+    ctxParams.n_ubatch = 512
+
+    guard let ctx = LlamaCppCApiAdapter.createContext(model: llamaModel, params: ctxParams) else {
+      throw LlamaCppError.contextInitFailed
+    }
+    // Free the context when generate() returns or throws — no leaks.
+    defer { llama_free(ctx) }
 
     // Tokenize prompt.
     let bufSize = request.prompt.utf8.count + 64
@@ -98,7 +115,7 @@ final class LlamaCppModelSession {
     for (i, tok) in promptTokens.enumerated() {
       addToken(&batch, token: tok, pos: Int32(i), seqId: 0, logits: i == promptTokens.count - 1)
     }
-    guard llama_decode(llamaContext, batch) == 0 else {
+    guard llama_decode(ctx, batch) == 0 else {
       llama_batch_free(batch)
       throw LlamaCppError.decodeFailed
     }
@@ -110,7 +127,7 @@ final class LlamaCppModelSession {
     let maxNew = max(1, request.maxTokens)
 
     while output.count < maxNew {
-      guard let logits = llama_get_logits(llamaContext) else {
+      guard let logits = llama_get_logits(ctx) else {
         throw LlamaCppError.invalidLogits
       }
 
@@ -132,7 +149,7 @@ final class LlamaCppModelSession {
       var nb = llama_batch_init(1, 0, 1)
       addToken(&nb, token: next, pos: nCur, seqId: 0, logits: true)
       nCur += 1
-      if llama_decode(llamaContext, nb) != 0 { llama_batch_free(nb); break }
+      if llama_decode(ctx, nb) != 0 { llama_batch_free(nb); break }
       llama_batch_free(nb)
     }
 
@@ -150,7 +167,6 @@ final class LlamaCppModelSession {
   // MARK: - Helpers
 
   /// Converts a token array to its UTF-8 string representation.
-  /// Throws LlamaCppError.detokenizationFailed if a token piece cannot be decoded.
   private func detokenize(tokens: [llama_token]) throws -> String {
     var result = ""
     var buf = [CChar](repeating: 0, count: 256)

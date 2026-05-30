@@ -49,10 +49,16 @@ API contract, native lifecycle, unavailable states, error codes, and backend dec
 - `LlamaCppCApiAdapter.tokenize` / `tokenToPiece` — use `withUnsafeMutableBufferPointer`, throw typed errors
 - New `LlamaCppError` cases: `vocabUnavailable`, `emptyVocabulary`, `detokenizationFailed`, `invalidLogits`, `inferenceBusy`
 - `LlamaCppModelSession` — vocab size and EOS token validated and cached at init; fails fast on corrupt/empty vocab
-- KV cache reset (`llama_kv_cache_clear`) before every inference — prevents stale state from prior runs
 - Inference serialization via `NSLock` — throws `inferenceBusy` if inference is already running
 - LLM Diagnostics phase tag updated to "PHASE 2B.7 — iOS COMPILE HARDENING"
 - Android diagnostics no longer reference Phase 2C for the Android backend
+
+**Phase 2B.8 adds:**
+- Removed direct call to `llama_kv_cache_clear` (availability varies across llama.cpp releases; risks compile errors against unknown package versions)
+- `LlamaCppModelSession` ownership model changed: session keeps `llama_model*` alive for the session lifetime; each `generate()` call creates a fresh `llama_context*` and frees it in `defer`
+- This eliminates stale KV state without relying on any KV-cache-clear API
+- Tradeoff: fresh context per inference is slower (context init overhead per call); accepted for Phase 2B.8 compile stability; may be optimized in Phase 2C when a stable memory-reset strategy is confirmed
+- Android `LLMInferenceNotImplementedError` message no longer references Phase 2C
 
 **Not included in Phase 2B:**
 - Temperature / top-P / top-K sampling (Phase 2C, iOS)
@@ -197,7 +203,7 @@ class LLMInferenceNotImplementedError   // code: 'INFERENCE_NOT_IMPLEMENTED'
 
 ## Native lifecycle
 
-### Current state (Phase 2B.7)
+### Current state (Phase 2B.8)
 
 ```
 App launch

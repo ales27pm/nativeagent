@@ -2,7 +2,7 @@
 
 > Expo + React Native New Architecture + Native Runtime
 
-NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation. **Phase 2B** integrates a real iOS llama.cpp inference backend. **Phase 2B.5** adds link validation tooling. **Phase 2B.6** hardens the llama.cpp C API layer. **Phase 2B.7** hardens Swift C pointer safety, adds inference serialization, and fixes capability flags.
+NativeAgent is a technical foundation for an on-device AI assistant. **Phase 1** establishes the real native runtime bridge. **Phase 1.5** hardens the bridge with health reporting and shape validation. **Phase 2A** adds the LLM runtime contract and lifecycle foundation. **Phase 2B** integrates a real iOS llama.cpp inference backend. **Phase 2B.5** adds link validation tooling. **Phase 2B.6** hardens the llama.cpp C API layer. **Phase 2B.7** hardens Swift C pointer safety, adds inference serialization, and fixes capability flags. **Phase 2B.8** removes the `llama_kv_cache_clear` compile risk by using fresh-context-per-inference.
 
 This project is **not** an Expo Go app. It uses local Expo Modules written in **Swift** (iOS) and **Kotlin** (Android), which require a development build.
 
@@ -129,6 +129,26 @@ A production-grade solution (config plugin, xcframework vendoring, or source ven
 
 Full guide: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`  
 API drift reference: `docs/LLAMA_CPP_API_COMPATIBILITY.md`
+
+## What Phase 2B.8 ships
+
+1. **Removed `llama_kv_cache_clear`** — the symbol's availability varies across llama.cpp Swift Package releases; calling it risks a compile error against an unknown package version
+2. **Fresh context per inference** — `LlamaCppModelSession` now creates a fresh `llama_context` at the start of each `generate()` call and frees it in `defer`; the `llama_model` stays alive for the session lifetime
+3. **No stale KV state** — fresh context guarantees clean state for each prompt without any KV-clear API dependency
+4. **Android `LLMInferenceNotImplementedError`** message updated — no longer references Phase 2C
+5. **`index.ts` JSDoc** updated — Android comment no longer says Phase 2C
+
+**Tradeoff:** Fresh context creation adds per-call overhead (model weights stay in RAM; only the attention/KV buffers are reallocated). Acceptable for Phase 2B validation. Phase 2C may re-introduce context reuse when a stable memory-reset strategy is confirmed.
+
+### How to validate Phase 2B.8 (iOS)
+
+1. `npx expo prebuild --clean && open ios/nativeagent.xcworkspace`
+2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
+3. `npx expo run:ios`
+4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`
+5. Copy a `.gguf` model, paste path → **LOAD MODEL** → **SMOKE TEST**
+6. Run SMOKE TEST a second time — output should be clean, not continuation of prior run (fresh context)
+7. TypeScript exits 0
 
 ---
 
@@ -335,7 +355,7 @@ The Expo autolinker scans `modules/` at the project root automatically when preb
 
 The runtime bridge in Phase 1 exists to anchor the following future modules:
 
-- **NativeLLMRuntime** ✓ Phase 2B.7 complete — iOS llama.cpp real inference, hardened; streaming Phase 2C (iOS only)
+- **NativeLLMRuntime** ✓ Phase 2B.8 complete — iOS llama.cpp real inference, compile-stable; streaming Phase 2C (iOS only)
 - **NativeEmbeddingRuntime** — fast vector embedding generation on-device
 - **NativeTokenizerRuntime** — sentence-piece / BPE tokenization native pass-through
 - **NativeAudioRuntime** — low-latency audio capture and VAD for voice agents

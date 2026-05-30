@@ -24,6 +24,12 @@
 // if your version removed it entirely, add -DLLAMA_CPP_NO_BACKEND_INIT to
 // Other Swift Flags to suppress the call.
 //
+// KV state:
+// llama_kv_cache_clear() is NOT called here. Its availability varies across
+// llama.cpp releases and calling it risks a compile error against an unknown
+// version of the Swift Package. Phase 2B.8 avoids stale KV state by creating
+// a fresh llama_context per runInference call instead of clearing the cache.
+//
 // This file is compiled ONLY when the llama Swift Package is linked
 // (#if canImport(llama) is true).
 
@@ -78,13 +84,6 @@ enum LlamaCppCApiAdapter {
     #else
     return llama_init_from_model(model, params)
     #endif
-  }
-
-  // MARK: - KV cache
-
-  /// Clear the entire KV cache before each inference to prevent stale state.
-  static func clearKVCache(_ ctx: OpaquePointer) {
-    llama_kv_cache_clear(ctx)
   }
 
   // MARK: - Vocab accessors

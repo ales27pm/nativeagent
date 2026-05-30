@@ -78,7 +78,7 @@ export class LLMInferenceNotImplementedError extends Error {
     super(
       'runInference is not available on this platform or backend in the current phase. ' +
         'iOS + llama.cpp: link the Swift Package and reload. ' +
-        'Android: inference backend not yet integrated (Phase 2C).',
+        'Android: inference backend is planned for a later dedicated phase.',
     );
     this.name = 'LLMInferenceNotImplementedError';
   }
@@ -143,7 +143,7 @@ export async function unloadModel(modelId: string): Promise<UnloadModelResult> {
  * Phase 2B status:
  *   - iOS + llama.cpp linked:  routes to real llama.cpp inference via native module
  *   - iOS without llama.cpp:   throws BackendUnavailableError from native
- *   - Android (any):           throws LLMInferenceNotImplementedError (Phase 2C)
+ *   - Android (any):           throws LLMInferenceNotImplementedError (backend planned later)
  *   - Sandbox / Expo Go:       throws NativeLLMRuntimeUnavailableError
  *
  * No fake output is ever returned. Any string in RunInferenceResult.text

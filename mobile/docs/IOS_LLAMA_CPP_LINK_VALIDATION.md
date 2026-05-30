@@ -1,4 +1,4 @@
-# iOS llama.cpp — Link Validation Guide (Phase 2B.5 / 2B.7)
+# iOS llama.cpp — Link Validation Guide (Phase 2B.5 / 2B.8)
 
 Step-by-step validation that the llama.cpp Swift Package is correctly linked, a GGUF model loads, and greedy inference returns real output.
 
@@ -221,11 +221,12 @@ The diagnostics screen shows "Add Swift Package" instructions and the SMOKE TEST
 
 ---
 
-## Phase 2B.7 is complete when
+## Phase 2B.8 is complete when
 
 1. `isLinked: true` in LLM Diagnostics
 2. `supportsQuantizedModels: true` (only when linked)
 3. LOAD MODEL succeeds with a real `.gguf` file
 4. SMOKE TEST returns a non-empty text from `llama_cpp` backend
-5. `supportsStreaming: false` (confirmed — streaming is Phase 2C, iOS only)
-6. TypeScript exits 0 (`npx tsc --noEmit` in `mobile/`)
+5. Repeated SMOKE TEST runs produce clean output (no stale KV state — ensured by fresh-context-per-inference)
+6. `supportsStreaming: false` (confirmed — streaming is Phase 2C, iOS only)
+7. TypeScript exits 0 (`npx tsc --noEmit` in `mobile/`)
