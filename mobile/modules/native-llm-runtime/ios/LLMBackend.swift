@@ -35,6 +35,7 @@ struct RunInferenceResultNative {
   let text: String
   let tokensGenerated: Int
   let tokensSeen: Int
+  let durationMs: Int
   let backend: String
   let modelId: String
 }

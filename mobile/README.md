@@ -70,6 +70,32 @@ This project is **not** an Expo Go app. It uses local Expo Modules written in **
 12. Updated LLM diagnostics screen: shows backend linked status, supported formats, inference readiness, linking instructions
 13. `docs/IOS_LLAMA_CPP_BACKEND.md` — step-by-step llama.cpp linking guide
 
+## What Phase 2B.5 ships
+
+1. **`isLinked: boolean`** added to `LLMRuntimeHealth` — exposes whether the native inference library is compiled into the binary
+2. **`durationMs: number`** added to `RunInferenceResult` — real wall-clock timing from `Date()` start to greedy sample loop end
+3. **Updated LLM Diagnostics screen**: `isLinked` row, "llama.cpp linked yes/no" and "GGUF ready yes/no" rows in backend status
+4. **DEV TOOLS block on LLM Diagnostics**: `TextInput` for model path, Load Model button, Unload Model button, Run Smoke Test button
+5. **Smoke test**: prompt `"Q: What is 2+2? A:"` — only enabled when `backend === 'llama_cpp'` AND `isLinked === true` AND model loaded; shows typed errors on failure, never fakes success
+6. **`useLLMRuntimeHealth` hook** extended with `loadModel`, `unloadModel`, `runInference` actions
+7. **Android `NativeLLMRuntimeModule.kt`** updated to include `isLinked: false` and `supportedFormats: []` in health map
+8. **`docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`** — complete step-by-step: prebuild → Xcode Package add → rebuild → model copy → smoke test
+9. **`docs/IOS_LLAMA_CPP_BACKEND.md`** updated with link validation section, common compile errors, memory pressure warning
+
+### How to validate Phase 2B.5 (iOS)
+
+1. `npx expo prebuild --clean && open ios/<Project>.xcworkspace`
+2. In Xcode: **File → Add Package Dependencies → https://github.com/ggml-org/llama.cpp**, product **llama**, target **NativeLLMRuntime**
+3. `npx expo run:ios`
+4. Open LLM Diagnostics → verify `isLinked: true`, `backend: llama_cpp`
+5. Copy a small `.gguf` model into the simulator Documents folder
+6. Paste path in MODEL PATH input → **LOAD MODEL** → **SMOKE TEST**
+7. Smoke result panel shows real generated text + token count + `durationMs`
+
+Full guide: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`
+
+---
+
 ### Current backend status
 
 | Platform | Backend | Status |

@@ -225,6 +225,63 @@ Phase 2B returns the complete generated text after all tokens are sampled. Phase
 
 ---
 
+## Link validation (Phase 2B.5)
+
+After linking llama.cpp and placing a `.gguf` model, use the **LLM Diagnostics → DEV TOOLS** section to validate end-to-end:
+
+1. Paste the model's absolute path in the MODEL PATH input
+2. Tap **LOAD MODEL** → expect `LOAD SUCCESS`
+3. Tap **SMOKE TEST** → sends `"Q: What is 2+2? A:"` to `runInference`
+
+The SMOKE TEST button is enabled only when `isLinked = true` and a model is loaded. It will never fire fake inference.
+
+Full walkthrough: `docs/IOS_LLAMA_CPP_LINK_VALIDATION.md`
+
+---
+
+## Common compile errors
+
+### "No such module 'llama'"
+The Swift Package was added to the wrong Xcode target. It must be added to **NativeLLMRuntime**, not the main app target. Remove it from the wrong target and re-add.
+
+### "Cannot find type 'llama_model' in scope"
+C++ interop issue. In NativeLLMRuntime target Build Settings:
+```
+Other C++ Flags → -std=c++17
+```
+
+### "Undefined symbol: llama_load_model_from_file"
+Clean build (⌘⇧K) and rebuild. If it persists, verify `llama` appears in **Link Binary With Libraries** for the NativeLLMRuntime target.
+
+### Architecture mismatch on Intel Mac simulator
+```
+Excluded Architectures [iphonesimulator] → x86_64
+```
+
+### llama.cpp API renamed between releases
+Post-mid-2025 releases may rename:
+- `llama_load_model_from_file` → `llama_model_load_from_file`
+- `llama_new_context_with_model` → `llama_init_from_model`
+- `llama_free_model` → `llama_model_free`
+
+The `#if canImport(llama)` guard means mismatches produce compile errors, not runtime crashes.
+
+---
+
+## Memory pressure warning
+
+Running large models on mobile can exhaust RAM and cause the OS to kill the app silently (no crash log). Guidelines:
+
+| Device RAM | Max safe model size |
+|------------|---------------------|
+| 4 GB | 1B Q4_K_M (~900 MB) |
+| 6 GB | 3B Q4_K_M (~1.8 GB) |
+| 8 GB+ | 7B Q4_K_M (~4 GB) |
+
+For Phase 2B validation, always start with a 1B Q4_K_M model. If the app disappears mid-inference, reduce model size.
+
+---
+
 ## Testing without a device
 
 If you don't have an iOS device and can't link llama.cpp in the Vibecode sandbox:

@@ -49,6 +49,7 @@ final class LlamaCppModelSession {
   // MARK: - Inference (greedy, Phase 2B — temperature/top-p sampling in Phase 2C)
 
   func generate(request: RunInferenceRequestNative) throws -> RunInferenceResultNative {
+    let startTime = Date()
     let promptBytes = Array(request.prompt.utf8)
     let bufSize = promptBytes.count + 64
     var tokenBuf = [llama_token](repeating: 0, count: bufSize)
@@ -109,10 +110,12 @@ final class LlamaCppModelSession {
       llama_batch_free(nb)
     }
 
+    let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
     return RunInferenceResultNative(
       text: detokenize(tokens: output),
       tokensGenerated: output.count,
       tokensSeen: Int(nPrompt),
+      durationMs: durationMs,
       backend: "llama_cpp",
       modelId: modelId
     )

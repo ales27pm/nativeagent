@@ -17,11 +17,13 @@ class NativeLLMRuntimeModule : Module() {
       val loadedId = loadedModelId
       mapOf(
         "available" to false,
+        "isLinked" to false,
         "platform" to "android",
         "backend" to "none",
         "supportsStreaming" to false,
         "supportsCancellation" to false,
         "supportsQuantizedModels" to false,
+        "supportedFormats" to emptyList<String>(),
         "loadedModelId" to loadedId,
         "reasonUnavailable" to "No inference backend linked. Phase 2B will integrate llama.cpp Android or ExecuTorch.",
       )

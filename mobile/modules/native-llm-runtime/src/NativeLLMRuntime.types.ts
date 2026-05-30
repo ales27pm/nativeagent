@@ -8,6 +8,7 @@ export type LLMRuntimeBackend =
 
 export type LLMRuntimeHealth = {
   available: boolean;
+  isLinked: boolean;
   platform: 'ios' | 'android';
   backend: LLMRuntimeBackend;
   supportsStreaming: boolean;
@@ -60,6 +61,7 @@ export type RunInferenceResult = {
   text: string;
   tokensGenerated: number;
   tokensSeen: number;
+  durationMs: number;
   backend: LLMRuntimeBackend;
   modelId: string;
 };

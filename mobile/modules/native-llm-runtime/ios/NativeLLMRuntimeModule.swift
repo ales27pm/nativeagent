@@ -12,6 +12,7 @@ public class NativeLLMRuntimeModule: Module {
     AsyncFunction("getLLMRuntimeHealth") { [self] () -> [String: Any] in
       var result: [String: Any] = [
         "available": backend.isLinked,
+        "isLinked": backend.isLinked,
         "platform": "ios",
         "backend": backend.backendName,
         "supportsStreaming": backend.supportsStreaming,
@@ -116,6 +117,7 @@ public class NativeLLMRuntimeModule: Module {
           "text": result.text,
           "tokensGenerated": result.tokensGenerated,
           "tokensSeen": result.tokensSeen,
+          "durationMs": result.durationMs,
           "backend": result.backend,
           "modelId": result.modelId,
         ]

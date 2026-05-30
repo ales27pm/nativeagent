@@ -91,6 +91,7 @@ export class LLMInferenceNotImplementedError extends Error {
 function offlineHealth(): LLMRuntimeHealth {
   return {
     available: false,
+    isLinked: false,
     platform: Platform.OS as 'ios' | 'android',
     backend: 'none',
     supportsStreaming: false,
