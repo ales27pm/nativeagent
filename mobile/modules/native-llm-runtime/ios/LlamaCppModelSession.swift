@@ -171,10 +171,14 @@ final class LlamaCppModelSession {
     var result = ""
     var buf = [CChar](repeating: 0, count: 256)
     for tok in tokens {
+      // adapter throws detokenizationFailed on negative result (with one resize retry)
       let n = try LlamaCppCApiAdapter.tokenToPiece(model: llamaModel, token: tok, buffer: &buf)
-      if n < 0 { throw LlamaCppError.detokenizationFailed }
       if n > 0 {
-        result += String(bytes: buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }, encoding: .utf8) ?? ""
+        let bytes = buf.prefix(Int(n)).map { UInt8(bitPattern: $0) }
+        guard let piece = String(bytes: bytes, encoding: .utf8) else {
+          throw LlamaCppError.detokenizationFailed
+        }
+        result += piece
       }
     }
     return result
